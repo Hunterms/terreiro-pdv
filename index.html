@@ -498,6 +498,7 @@ onSnapshot(query(collection(db, 'products'), orderBy('nome')), snap => {
   if (document.getElementById('panel-insights').classList.contains('active')) renderInsights();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  focusScan();
   document.getElementById('status-dot').classList.remove('off');
   document.getElementById('status-txt').textContent = 'online';
 });
@@ -578,10 +579,37 @@ window.remCI = function(id) { S.cart = S.cart.filter(x => x.id !== id); renderCa
 window.clearCart = function() { S.cart = []; renderCart(); };
 
 window.searchBarcode = function() {
-  const v = document.getElementById('barcode-input').value.trim(); if (!v) return;
+  const inp = document.getElementById('barcode-input');
+  const v = inp.value.trim(); if (!v) return;
   const p = S.products.find(x => x.codigo === v || x.nome.toLowerCase().includes(v.toLowerCase()));
-  if (p) { addToCart(p.id); document.getElementById('barcode-input').value = ''; }
-  else toast('Produto não encontrado: ' + v, 'err');
+  if (p) {
+    addToCart(p.id);
+    inp.value = '';
+    inp.focus();
+  } else {
+    showNotFound(v);
+    inp.select();
+  }
+};
+
+function showNotFound(codigo) {
+  const existing = document.getElementById('not-found-banner');
+  if (existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'not-found-banner';
+  banner.style.cssText = 'background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:#dc2626;margin-bottom:4px';
+  banner.innerHTML = \`<span>Código <strong>\${codigo}</strong> não encontrado no cadastro.</span>
+    <button onclick="goToCadastro('\${codigo}')" style="background:#dc2626;color:white;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit">Cadastrar agora</button>\`;
+  const scanRow = document.querySelector('#panel-pdv .scan-row');
+  scanRow.parentNode.insertBefore(banner, scanRow.nextSibling);
+  setTimeout(() => { if (banner.parentNode) banner.remove(); }, 6000);
+}
+
+window.goToCadastro = function(codigo) {
+  const existing = document.getElementById('not-found-banner');
+  if (existing) existing.remove();
+  showPanel('cadastro', document.querySelector('.nav button:nth-child(6)'));
+  setTimeout(() => { document.getElementById('f-codigo').value = codigo; previewBC(); document.getElementById('f-nome').focus(); }, 100);
 };
 
 document.getElementById('barcode-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchBarcode(); });
