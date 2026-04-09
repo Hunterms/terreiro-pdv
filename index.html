@@ -231,8 +231,9 @@ tr:hover td{background:var(--bg2)}
 
 <div id="loading">
   <div class="logo-big"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-  <div class="spinner"></div>
-  <p>Conectando ao banco de dados...</p>
+  <div class="spinner" id="loading-spinner"></div>
+  <p id="loading-msg">Conectando ao banco de dados...</p>
+  <button id="loading-retry" onclick="location.reload()" style="display:none;margin-top:8px;padding:8px 20px;background:#7c6af7;color:white;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Tentar novamente</button>
 </div>
 
 <div class="shell" id="app" style="display:none">
@@ -443,11 +444,11 @@ tr:hover td{background:var(--bg2)}
 
 <!-- FIREBASE -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm";
 import {
   getFirestore, collection, doc, onSnapshot,
-  addDoc, updateDoc, deleteDoc, setDoc, query, orderBy, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp
+} from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/firestore/+esm";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCVGBtxNCj4iE3OsBY4KD_eYlYXL3SGgs4",
@@ -460,6 +461,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// Timeout — se não carregar em 12s, mostra erro
+const loadTimeout = setTimeout(() => {
+  const el = document.getElementById('loading-msg');
+  const sp = document.getElementById('loading-spinner');
+  const btn = document.getElementById('loading-retry');
+  if (el) el.textContent = 'Não foi possível conectar. Verifique as regras do Firestore.';
+  if (sp) sp.style.display = 'none';
+  if (btn) btn.style.display = 'inline-block';
+}, 12000);
 
 const catLabel = {cantina:'Cantina',bebidas:'Bebidas',religioso:'Art. Rel.',outros:'Outros'};
 const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -496,6 +507,7 @@ onSnapshot(query(collection(db, 'products'), orderBy('nome')), snap => {
   if (document.getElementById('panel-estoque').classList.contains('active')) renderEstoque();
   if (document.getElementById('panel-codigos').classList.contains('active')) renderBcGrid();
   if (document.getElementById('panel-insights').classList.contains('active')) renderInsights();
+  clearTimeout(loadTimeout);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   focusScan();
