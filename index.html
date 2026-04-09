@@ -588,7 +588,8 @@ window.searchBarcode = function() {
     inp.focus();
   } else {
     showNotFound(v);
-    inp.select();
+    inp.value = '';
+    inp.focus();
   }
 };
 
@@ -613,6 +614,20 @@ window.goToCadastro = function(codigo) {
 };
 
 document.getElementById('barcode-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchBarcode(); });
+
+// Captura qualquer tecla digitada na página e redireciona pro input do scanner
+document.addEventListener('keydown', function(e) {
+  const pdvActive = document.getElementById('panel-pdv').classList.contains('active');
+  if (!pdvActive) return;
+  const tag = document.activeElement.tagName.toLowerCase();
+  const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
+  if (isInput) return;
+  // Ignora teclas de controle (Shift, Ctrl, Alt, Tab, etc)
+  if (e.key.length > 1 && e.key !== 'Backspace') return;
+  const inp = document.getElementById('barcode-input');
+  inp.focus();
+  // Não previne o evento — o caractere vai cair no input normalmente
+});
 
 // ---- PAYMENT ----
 window.openPay = function(m) {
