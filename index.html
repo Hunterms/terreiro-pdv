@@ -43,6 +43,27 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 #loading p{font-size:14px;color:var(--text3);letter-spacing:.04em}
 .spinner{width:28px;height:28px;border:2px solid rgba(255,255,255,0.08);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* LOGIN */
+#login-screen{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:var(--bg);background-image:radial-gradient(ellipse at center,rgba(230,51,41,0.06) 0%,transparent 70%)}
+#login-screen.show{display:flex}
+.login-box{width:400px;max-width:92vw;background:rgba(255,255,255,0.04);backdrop-filter:blur(24px);border:1px solid rgba(230,51,41,0.2);border-radius:22px;padding:44px;display:flex;flex-direction:column;align-items:center;gap:24px;box-shadow:0 0 60px rgba(230,51,41,0.08),0 0 120px rgba(0,0,0,.5)}
+.login-icon{width:56px;height:56px;background:linear-gradient(135deg,var(--red),var(--red2));border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(230,51,41,0.35)}
+.login-icon svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:1.8}
+.login-title{font-family:var(--font-display);font-size:24px;color:var(--text);letter-spacing:.08em;text-align:center;font-weight:700}
+.login-sub{font-size:11px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
+.login-fields{width:100%;display:flex;flex-direction:column;gap:14px}
+.login-field{display:flex;flex-direction:column;gap:7px}
+.login-field label{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.login-field input{padding:13px 16px;background:rgba(255,255,255,0.06);border:1px solid var(--border2);border-radius:var(--rad);color:var(--text);font-size:15px;font-family:var(--font);outline:none;transition:all .2s}
+.login-field input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(230,51,41,0.15);background:rgba(255,255,255,0.08)}
+.login-field input::placeholder{color:var(--text3)}
+.btn-login{width:100%;padding:14px;background:linear-gradient(135deg,var(--red),var(--red2));border:none;border-radius:var(--rad);color:white;font-size:15px;font-weight:600;cursor:pointer;font-family:var(--font);letter-spacing:.04em;transition:all .2s;box-shadow:0 3px 16px rgba(230,51,41,0.25)}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 6px 28px rgba(230,51,41,0.4)}
+.login-err{font-size:13px;color:var(--red);text-align:center;display:none;padding:8px 12px;background:var(--red-bg);border:1px solid var(--red-bd);border-radius:var(--rad);width:100%}
+.btn-logout{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;background:transparent;border:1px solid var(--border2);border-radius:var(--rad);color:var(--text3);font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s}
+.btn-logout:hover{border-color:var(--red);color:var(--red)}
+.btn-logout svg{width:14px;height:14px;flex-shrink:0}
+
 
 /* SHELL */
 .shell{position:relative;z-index:1;max-width:1210px;margin:0 auto;padding:22px 18px;font-size:110%}
@@ -274,7 +295,33 @@ tr:hover td{background:var(--glass)}
 </head>
 <body>
 
-<div id="loading">
+<div id="login-screen">
+  <div class="login-box">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div class="login-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      </div>
+      <div style="text-align:center">
+        <div class="login-title">Terreiro PDV</div>
+        <div class="login-sub">sistema de vendas</div>
+      </div>
+    </div>
+    <div class="login-fields">
+      <div class="login-field">
+        <label>Usuário</label>
+        <input id="login-user" type="text" placeholder="usuário" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()"/>
+      </div>
+      <div class="login-field">
+        <label>Senha</label>
+        <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+    </div>
+    <div class="login-err" id="login-err">Usuário ou senha incorretos</div>
+    <button class="btn-login" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
+<div id="loading" style="display:none">
   <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#e63329" stroke-width="1.5" style="filter:drop-shadow(0 0 16px rgba(230,51,41,0.4))"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
   <h2>Terreiro PDV</h2>
   <div class="spinner" id="loading-spinner"></div>
@@ -294,6 +341,10 @@ tr:hover td{background:var(--glass)}
     <div class="topbar-right">
       <div class="sync-pill"><div class="sync-dot" id="sync-dot"></div><span id="sync-txt">sincronizado</span></div>
       <div class="status-pill"><div class="status-dot" id="status-dot"></div><span id="status-txt">online</span></div>
+      <button class="btn-logout" onclick="doLogout()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sair
+      </button>
     </div>
   </div>
 
@@ -525,6 +576,53 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+const CREDENTIALS = [
+  { user: 'pai', pass: 'candieiro2025' },
+  { user: 'loja', pass: 'pdv2025' }
+];
+const SESSION_KEY = 'pdv_auth';
+
+function checkSession() { return sessionStorage.getItem(SESSION_KEY) === 'ok'; }
+
+function showLoginScreen() {
+  document.getElementById('login-screen').classList.add('show');
+  setTimeout(() => document.getElementById('login-user').focus(), 100);
+}
+function hideLoginScreen() { document.getElementById('login-screen').classList.remove('show'); }
+
+window.doLogin = function() {
+  const user = document.getElementById('login-user').value.trim().toLowerCase();
+  const pass = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-err');
+  const valid = CREDENTIALS.find(cr => cr.user === user && cr.pass === pass);
+  if (valid) {
+    sessionStorage.setItem(SESSION_KEY, 'ok');
+    err.style.display = 'none';
+    hideLoginScreen();
+    startListeners();
+  } else {
+    err.style.display = 'block';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+  }
+};
+
+window.doLogout = function() {
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  showLoginScreen();
+};
+
+function startListeners() {
+document.getElementById('loading').style.display = 'flex';
+document.getElementById('loading-msg').textContent = 'Conectando ao banco de dados...';
+document.getElementById('loading-spinner').style.display = 'block';
+document.getElementById('loading-retry').style.display = 'none';
 
 const loadTimeout = setTimeout(() => {
   document.getElementById('loading-msg').textContent = 'Não foi possível conectar. Verifique as regras do Firestore.';
@@ -912,6 +1010,12 @@ window.toast = function(msg,type) {
 
 window.addEventListener('offline',()=>{ document.getElementById('status-dot').classList.add('off'); document.getElementById('status-txt').textContent='offline'; });
 window.addEventListener('online',()=>{ document.getElementById('status-dot').classList.remove('off'); document.getElementById('status-txt').textContent='online'; });
+} // end startListeners
+
+// Init
+if (checkSession()) { startListeners(); }
+else { showLoginScreen(); }
+
 </script>
 </body>
 </html>
