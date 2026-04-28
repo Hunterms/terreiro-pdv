@@ -291,6 +291,8 @@ tr:hover td{background:var(--glass)}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1) opacity(.4);cursor:pointer}
+input[type="date"]{color-scheme:dark}
 </style>
 </head>
 <body>
@@ -425,9 +427,21 @@ tr:hover td{background:var(--glass)}
 
   <!-- CAIXA -->
   <div id="panel-caixa" class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)">Fluxo de Caixa</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="shiftDay(-1)" style="width:32px;height:32px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">&#8249;</button>
+          <input type="date" id="caixa-date" onchange="renderCaixa()" style="padding:7px 12px;background:var(--glass);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;cursor:pointer;transition:border .15s" onfocus="this.style.borderColor='var(--red)'" onblur="this.style.borderColor='var(--border2)'" />
+          <button onclick="shiftDay(1)" style="width:32px;height:32px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">&#8250;</button>
+        </div>
+        <button onclick="goToday()" id="btn-today" style="padding:7px 14px;background:var(--glass);border:1px solid var(--border2);border-radius:9px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .15s" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">Hoje</button>
+      </div>
+    </div>
     <div class="metrics-grid" id="caixa-metrics"></div>
+    <div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px" id="caixa-methods"></div>
     <div class="card">
-      <div class="card-title">Histórico de hoje</div>
+      <div class="card-title" id="caixa-hist-title">Histórico</div>
       <div id="hist-list"><div class="empty-state">Carregando...</div></div>
     </div>
   </div>
@@ -679,7 +693,7 @@ window.showPanel = function(id, btn) {
   document.getElementById('panel-'+id).classList.add('active');
   if (btn) btn.classList.add('active');
   if (id==='estoque') renderEstoque();
-  if (id==='caixa') renderCaixa();
+  if (id==='caixa') { initCaixaDate(); renderCaixa(); }
   if (id==='codigos') renderBcGrid();
   if (id==='insights') renderInsights();
   if (id==='pdv') focusScan();
@@ -853,18 +867,87 @@ window.confirmDelete = async function() {
   setSyncing(false); closeDel(); toast('Produto removido.');
 };
 
+function getTodayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function initCaixaDate() {
+  const el = document.getElementById('caixa-date');
+  if (!el.value) el.value = getTodayStr();
+}
+
+window.goToday = function() {
+  document.getElementById('caixa-date').value = getTodayStr();
+  renderCaixa();
+};
+
+window.shiftDay = function(delta) {
+  const el = document.getElementById('caixa-date');
+  if (!el.value) el.value = getTodayStr();
+  const d = new Date(el.value + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  el.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  renderCaixa();
+};
+
 function renderCaixa() {
-  const today=new Date(); today.setHours(0,0,0,0);
-  const ts=S.sales.filter(s=>s.ts>=today);
-  const total=ts.reduce((s,v)=>s+v.total,0); const qty=ts.length;
+  initCaixaDate();
+  const dateStr = document.getElementById('caixa-date').value;
+  const [yr, mo, dy] = dateStr.split('-').map(Number);
+  const dayStart = new Date(yr, mo-1, dy, 0, 0, 0, 0);
+  const dayEnd   = new Date(yr, mo-1, dy, 23, 59, 59, 999);
+
+  // Update "Hoje" button highlight
+  const isToday = dateStr === getTodayStr();
+  const todayBtn = document.getElementById('btn-today');
+  if (todayBtn) {
+    todayBtn.style.borderColor = isToday ? 'var(--red)' : 'var(--border2)';
+    todayBtn.style.color = isToday ? 'var(--red)' : 'var(--text2)';
+  }
+
+  // Update title with formatted date
+  const fmtDate = new Date(yr, mo-1, dy).toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  const titleEl = document.getElementById('caixa-hist-title');
+  if (titleEl) titleEl.textContent = isToday ? 'Histórico de hoje' : 'Histórico — ' + fmtDate.charAt(0).toUpperCase() + fmtDate.slice(1);
+
+  const ts = S.sales.filter(s => s.ts >= dayStart && s.ts <= dayEnd);
+  const total = ts.reduce((s,v)=>s+v.total, 0);
+  const qty = ts.length;
+
   document.getElementById('caixa-metrics').innerHTML =
-    '<div class="metric green"><div class="ml">Receita do dia</div><div class="mv">' + fmt(total) + '</div></div>' +
+    '<div class="metric green"><div class="ml">Receita' + (isToday?' do dia':''  ) + '</div><div class="mv">' + fmt(total) + '</div></div>' +
     '<div class="metric blue"><div class="ml">Vendas realizadas</div><div class="mv">' + qty + '</div></div>' +
     '<div class="metric gold"><div class="ml">Ticket médio</div><div class="mv">' + fmt(qty?total/qty:0) + '</div></div>';
+
+  // Breakdown by payment method
   const mColors={dinheiro:'#2ecc71',pix:'#32bcad',debito:'#3498db',credito:'#d4a843'};
   const mLabel={dinheiro:'Dinheiro',pix:'Pix',debito:'Débito',credito:'Crédito'};
+  const byMethod = {};
+  ts.forEach(s => {
+    if (!byMethod[s.method]) byMethod[s.method] = { total:0, qty:0 };
+    byMethod[s.method].total += s.total;
+    byMethod[s.method].qty++;
+  });
+  const methodKeys = Object.keys(byMethod);
+  const methodsEl = document.getElementById('caixa-methods');
+  if (methodsEl) {
+    if (methodKeys.length === 0) {
+      methodsEl.style.display = 'none';
+    } else {
+      methodsEl.style.display = 'grid';
+      methodsEl.innerHTML = methodKeys.map(m =>
+        '<div style="display:flex;flex-direction:column;gap:6px">' +
+        '<div style="font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase">' + (mLabel[m]||m) + '</div>' +
+        '<div style="font-size:18px;font-weight:600;color:' + (mColors[m]||'#888') + '">' + fmt(byMethod[m].total) + '</div>' +
+        '<div style="font-size:11px;color:var(--text3)">' + byMethod[m].qty + ' ' + (byMethod[m].qty===1?'venda':'vendas') + '</div>' +
+        '</div>'
+      ).join('');
+    }
+  }
+
   document.getElementById('hist-list').innerHTML = ts.length===0 ?
-    '<div class="empty-state">Nenhuma venda registrada hoje.</div>' :
+    '<div class="empty-state">Nenhuma venda registrada neste dia.</div>' :
     ts.map(s =>
       '<div class="hist-row"><div class="hdot" style="background:' + (mColors[s.method]||'#888') + '"></div>' +
       '<div class="hinfo"><div class="hname">' + s.items.map(i=>i.nome).join(', ') + '</div>' +
@@ -874,10 +957,17 @@ function renderCaixa() {
 }
 
 function getFS() {
-  const now=new Date();
   return S.sales.filter(s => {
-    if (S.ip==='hoje') { const d=new Date(); d.setHours(0,0,0,0); return s.ts>=d; }
-    if (S.ip==='semana') return (now-s.ts)/86400000<=7;
+    if (S.ip==='hoje') {
+      const d=new Date(); d.setHours(0,0,0,0);
+      const e=new Date(); e.setHours(23,59,59,999);
+      return s.ts>=d && s.ts<=e;
+    }
+    if (S.ip==='semana') {
+      const d=new Date(); d.setHours(0,0,0,0);
+      d.setDate(d.getDate()-6);
+      return s.ts>=d;
+    }
     return true;
   });
 }
