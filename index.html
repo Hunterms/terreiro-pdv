@@ -149,6 +149,35 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .cat-modal-item .ci-est{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 
+/* EVENT BAR — carimba todas as vendas pra relatório do Pai */
+.event-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:linear-gradient(135deg,rgba(212,168,67,0.12),rgba(212,168,67,0.02));border:1px solid rgba(212,168,67,0.3);border-radius:var(--rad);margin-bottom:12px;flex-wrap:wrap}
+.event-bar.empty{background:var(--glass);border-style:dashed;border-color:var(--border2)}
+.event-bar-info{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.event-bar-info .ev-icon{font-size:20px;flex-shrink:0}
+.event-bar-info .ev-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;line-height:1;margin-bottom:3px}
+.event-bar-info .ev-name{font-size:15px;font-weight:700;color:var(--gold);line-height:1.2}
+.event-bar.empty .ev-name{color:var(--text3);font-weight:500;font-style:italic}
+.event-bar-info .ev-meta{font-size:11px;color:var(--text3);margin-top:3px}
+.event-bar-acts{display:flex;gap:6px;flex-wrap:wrap}
+.ev-btn{padding:6px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--glass);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .12s}
+.ev-btn:hover{background:var(--glass2);color:var(--text);border-color:var(--border2)}
+.ev-btn-primary{background:linear-gradient(135deg,var(--gold-bg),rgba(212,168,67,0.04));border-color:rgba(212,168,67,0.3);color:var(--gold)}
+.ev-btn-primary:hover{background:rgba(212,168,67,0.18);color:var(--gold);border-color:var(--gold)}
+.ev-btn-danger:hover{background:var(--red-bg);color:var(--red);border-color:var(--red-bd)}
+
+/* PRESENTES — contador de quem chegou */
+.presentes-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(52,152,219,0.08);border:1px solid rgba(52,152,219,0.22);border-radius:var(--rad);margin-bottom:8px}
+.presentes-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.presentes-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;line-height:1}
+.presentes-total{font-size:18px;font-weight:700;color:var(--blue);line-height:1.1;font-family:var(--font-display)}
+.presentes-total .sublabel{font-size:11px;color:var(--text3);font-weight:500;margin-left:5px;font-family:var(--font)}
+.presentes-btns{display:flex;gap:6px;align-items:center}
+.presentes-input{width:48px;padding:6px;text-align:center;font-size:13px;font-weight:600;background:var(--glass);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:var(--font);outline:none;-moz-appearance:textfield}
+.presentes-input::-webkit-outer-spin-button,.presentes-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.btn-presente{padding:8px 14px;background:linear-gradient(135deg,#3498db,#2980b9);border:none;border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .12s;letter-spacing:.02em}
+.btn-presente:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(52,152,219,0.4)}
+.btn-presente:active{transform:translateY(0)}
+
 /* CART */
 .cart-panel{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radlg);padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 24px rgba(0,0,0,.3)}
 .cart-items{display:flex;flex-direction:column;gap:6px;min-height:130px}
@@ -389,6 +418,7 @@ input[type="date"]{color-scheme:dark}
     <button class="active" onclick="showPanel('pdv',this)">PDV / Venda</button>
     <button onclick="showPanel('estoque',this)">Estoque</button>
     <button onclick="showPanel('caixa',this)">Fluxo de Caixa</button>
+    <button onclick="showPanel('relatorio',this)">Relatório</button>
     <button onclick="showPanel('insights',this)">Insights</button>
     <button onclick="showPanel('cadastro',this)">Cadastrar</button>
     <button onclick="showPanel('codigos',this)">Códigos</button>
@@ -396,6 +426,21 @@ input[type="date"]{color-scheme:dark}
 
   <!-- PDV -->
   <div id="panel-pdv" class="panel active">
+    <!-- Barra do evento ativo — toda venda/presente é carimbado com ele -->
+    <div class="event-bar empty" id="event-bar">
+      <div class="event-bar-info">
+        <span class="ev-icon">📅</span>
+        <div>
+          <div class="ev-label">Evento atual</div>
+          <div class="ev-name" id="ev-name">Sem evento ativo</div>
+          <div class="ev-meta" id="ev-meta"></div>
+        </div>
+      </div>
+      <div class="event-bar-acts" id="event-bar-acts">
+        <button class="ev-btn ev-btn-primary" onclick="abrirEventoPrompt()">Iniciar evento</button>
+      </div>
+    </div>
+
     <div class="scan-row">
       <div class="scan-wrap">
         <svg class="scan-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h1v10H7zM11 7h1v10h-1zM14 7h2v10h-2z"/></svg>
@@ -409,6 +454,17 @@ input[type="date"]{color-scheme:dark}
         <div class="quick-grid" id="quick-btns"><div class="empty-state">Carregando produtos...</div></div>
       </div>
       <div class="cart-panel">
+        <!-- Contador de presentes — só aparece se tiver evento ativo -->
+        <div class="presentes-card" id="presentes-card" style="display:none">
+          <div class="presentes-info">
+            <div class="presentes-label">Presentes na gira</div>
+            <div class="presentes-total"><span id="pres-total">0</span><span class="sublabel" id="pres-last"></span></div>
+          </div>
+          <div class="presentes-btns">
+            <input class="presentes-input" type="number" min="1" max="99" id="pres-qty" value="1" title="Quantos chegaram agora?"/>
+            <button class="btn-presente" onclick="addPresente()">+ Chegou</button>
+          </div>
+        </div>
         <div class="sec-lbl">Carrinho</div>
         <div class="cart-items" id="cart-items"><div class="cart-empty">Nenhum item ainda</div></div>
         <div class="divider"></div>
@@ -549,6 +605,20 @@ input[type="date"]{color-scheme:dark}
     </div>
   </div>
 
+  <!-- RELATÓRIO — infográfico do evento pra o Pai mandar zap -->
+  <div id="panel-relatorio" class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)">Relatório do evento</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:3px">Selecione um evento pra ver o resumo e compartilhar.</div>
+      </div>
+      <select class="fi" id="rel-evt-sel" onchange="renderRelatorio()" style="min-width:240px;padding:10px 14px;background:rgba(255,255,255,0.05);border:1px solid var(--border2);border-radius:var(--rad);color:var(--text);font-size:14px;font-family:var(--font);outline:none">
+        <option value="">— Selecione um evento —</option>
+      </select>
+    </div>
+    <div id="rel-content"><div class="empty-state" style="padding:60px 20px">Escolha um evento na lista acima.</div></div>
+  </div>
+
   <!-- CÓDIGOS -->
   <div id="panel-codigos" class="panel">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -638,7 +708,7 @@ input[type="date"]{color-scheme:dark}
 import { initializeApp } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm";
 import {
   getFirestore, collection, doc, onSnapshot,
-  addDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp
+  addDoc, updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp, arrayUnion
 } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/firestore/+esm";
 
 const firebaseConfig = {
@@ -722,7 +792,10 @@ const catOrder = ['salgados','doces','bebidas','guias','velas','defumacao','reli
 const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 const cartTotal = () => S.cart.reduce((s,i) => s + i.preco * i.qty, 0);
 
-const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null, ip:'hoje' };
+const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null, ip:'hoje',
+  eventos:[],         // todos os eventos (abertos + fechados) pro relatório
+  eventoAtivo:null    // doc do evento aberto atual (ou null)
+};
 let hChart = null;
 
 function setSyncing(on) {
@@ -757,7 +830,131 @@ onSnapshot(query(collection(db,'sales'), orderBy('ts','desc')), snap => {
   });
   if (document.getElementById('panel-caixa').classList.contains('active')) renderCaixa();
   if (document.getElementById('panel-insights').classList.contains('active')) renderInsights();
+  if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
 });
+
+// ── EVENTOS DE CAIXA ──────────────────────────────────────────────────────
+// Cada gira/festa pode virar um "evento" — agrupa vendas + presentes pra relatório
+onSnapshot(query(collection(db,'eventos_caixa'), orderBy('abertoEm','desc')), snap => {
+  S.eventos = snap.docs.map(d => {
+    const data = d.data();
+    return { id:d.id, ...data,
+      abertoEm: data.abertoEm?.toDate ? data.abertoEm.toDate() : null,
+      fechadoEm: data.fechadoEm?.toDate ? data.fechadoEm.toDate() : null
+    };
+  });
+  S.eventoAtivo = S.eventos.find(e => e.status === 'aberto') || null;
+  renderEventBar();
+  renderPresentes();
+  // Atualiza dropdown do relatório
+  const sel = document.getElementById('rel-evt-sel');
+  if (sel) {
+    const curr = sel.value;
+    sel.innerHTML = '<option value="">— Selecione um evento —</option>' +
+      S.eventos.map(e => '<option value="' + e.id + '">' + (e.status==='aberto'?'🟢 ':'') + (e.nome||'(sem nome)') + ' · ' + (e.abertoEm?e.abertoEm.toLocaleDateString('pt-BR'):'') + '</option>').join('');
+    if (curr) sel.value = curr;
+  }
+  if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
+});
+
+function renderEventBar() {
+  const bar = document.getElementById('event-bar');
+  if (!bar) return;
+  const ev = S.eventoAtivo;
+  if (!ev) {
+    bar.classList.add('empty');
+    document.getElementById('ev-name').textContent = 'Sem evento ativo';
+    document.getElementById('ev-meta').textContent = '';
+    document.getElementById('event-bar-acts').innerHTML =
+      '<button class="ev-btn ev-btn-primary" onclick="abrirEventoPrompt()">Iniciar evento</button>';
+    return;
+  }
+  bar.classList.remove('empty');
+  document.getElementById('ev-name').textContent = ev.nome || '(sem nome)';
+  const inicio = ev.abertoEm ? ev.abertoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+  const totalPres = (ev.presencas||[]).reduce((s,p)=>s+(p.qtd||1),0);
+  document.getElementById('ev-meta').textContent = 'iniciado às ' + inicio + ' · ' + totalPres + ' presente' + (totalPres===1?'':'s');
+  document.getElementById('event-bar-acts').innerHTML =
+    '<button class="ev-btn" onclick="editarNomeEvento()">Renomear</button>' +
+    '<button class="ev-btn ev-btn-danger" onclick="encerrarEvento()">Encerrar evento</button>';
+}
+
+function renderPresentes() {
+  const card = document.getElementById('presentes-card');
+  if (!card) return;
+  const ev = S.eventoAtivo;
+  if (!ev) { card.style.display = 'none'; return; }
+  card.style.display = 'flex';
+  const presencas = ev.presencas || [];
+  const total = presencas.reduce((s,p)=>s+(p.qtd||1),0);
+  document.getElementById('pres-total').textContent = total;
+  const last = presencas[presencas.length-1];
+  if (last && last.ts) {
+    const tsDate = last.ts.toDate ? last.ts.toDate() : new Date(last.ts);
+    const hora = tsDate.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('pres-last').textContent = '· última às ' + hora;
+  } else {
+    document.getElementById('pres-last').textContent = '';
+  }
+}
+
+window.abrirEventoPrompt = async function() {
+  const nome = prompt('Nome do evento (ex: Gira de Pretos Velhos, Festa do Dendê):');
+  if (!nome || !nome.trim()) return;
+  setSyncing(true);
+  try {
+    await addDoc(collection(db,'eventos_caixa'), {
+      nome: nome.trim(),
+      status: 'aberto',
+      abertoEm: serverTimestamp(),
+      fechadoEm: null,
+      presencas: []
+    });
+    toast('Evento "' + nome.trim() + '" iniciado.','ok');
+  } catch(e) { toast('Erro ao abrir evento','err'); }
+  finally { setSyncing(false); }
+};
+
+window.editarNomeEvento = async function() {
+  const ev = S.eventoAtivo; if (!ev) return;
+  const novo = prompt('Novo nome do evento:', ev.nome||'');
+  if (!novo || !novo.trim() || novo.trim() === ev.nome) return;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'eventos_caixa',ev.id), { nome: novo.trim() });
+    toast('Evento renomeado.','ok');
+  } catch(e) { toast('Erro ao renomear','err'); }
+  finally { setSyncing(false); }
+};
+
+window.encerrarEvento = async function() {
+  const ev = S.eventoAtivo; if (!ev) return;
+  if (!confirm('Encerrar o evento "' + (ev.nome||'') + '"? Vendas futuras não serão mais associadas a ele.')) return;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'eventos_caixa',ev.id), {
+      status: 'fechado',
+      fechadoEm: serverTimestamp()
+    });
+    toast('Evento encerrado. Confira o Relatório.','ok');
+  } catch(e) { toast('Erro ao encerrar','err'); }
+  finally { setSyncing(false); }
+};
+
+window.addPresente = async function() {
+  const ev = S.eventoAtivo; if (!ev) { toast('Inicie um evento antes','err'); return; }
+  const inp = document.getElementById('pres-qty');
+  const qtd = Math.max(1, Math.min(99, parseInt(inp.value)||1));
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'eventos_caixa',ev.id), {
+      presencas: arrayUnion({ ts: new Date(), qtd })
+    });
+    inp.value = '1';
+    toast('+' + qtd + ' presente' + (qtd===1?'':'s') + ' registrado' + (qtd===1?'':'s'),'ok');
+  } catch(e) { toast('Erro ao registrar','err'); }
+  finally { setSyncing(false); }
+};
 
 function focusScan() { setTimeout(() => { try { document.getElementById('barcode-input').focus(); } catch(e){} }, 120); }
 
@@ -770,6 +967,7 @@ window.showPanel = function(id, btn) {
   if (id==='caixa') { initCaixaDate(); renderCaixa(); }
   if (id==='codigos') renderBcGrid();
   if (id==='insights') renderInsights();
+  if (id==='relatorio') renderRelatorio();
   if (id==='pdv') focusScan();
 };
 
@@ -946,6 +1144,8 @@ window.confirmSale = async function() {
     await addDoc(collection(db,'sales'), {
       items: itemsWithCost,
       total, custoTotal, method:S.pm,
+      eventoId: S.eventoAtivo?.id || null,
+      eventoNome: S.eventoAtivo?.nome || null,
       time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
       ts: serverTimestamp()
     });
@@ -1123,6 +1323,184 @@ function getFS() {
     return true;
   });
 }
+// ── RELATÓRIO DO EVENTO (infográfico) ─────────────────────────────────────
+window.renderRelatorio = function() {
+  const sel = document.getElementById('rel-evt-sel');
+  const cont = document.getElementById('rel-content');
+  if (!sel || !cont) return;
+  const id = sel.value;
+  if (!id) {
+    cont.innerHTML = '<div class="empty-state" style="padding:60px 20px">Escolha um evento na lista acima.</div>';
+    return;
+  }
+  const ev = S.eventos.find(e => e.id === id);
+  if (!ev) { cont.innerHTML = '<div class="empty-state">Evento não encontrado.</div>'; return; }
+
+  // Filtra vendas desse evento
+  const vendas = S.sales.filter(s => s.eventoId === id);
+  const total = vendas.reduce((s,v)=>s+(v.total||0), 0);
+  const custo = vendas.reduce((s,v)=>s+(Number(v.custoTotal)||0), 0);
+  const lucro = total - custo;
+  const margem = total > 0 ? (lucro/total*100) : 0;
+  const presencas = ev.presencas || [];
+  const totalPres = presencas.reduce((s,p)=>s+(p.qtd||1),0);
+  const dataIni = ev.abertoEm;
+  const dataFim = ev.fechadoEm;
+  const status = ev.status === 'aberto' ? 'EM ANDAMENTO' : 'ENCERRADO';
+
+  // Breakdown por categoria
+  const catTotals = {}; const catQty = {};
+  vendas.forEach(v => (v.items||[]).forEach(i => {
+    const c = i.categoria || 'outros';
+    catTotals[c] = (catTotals[c]||0) + (i.preco||0) * (i.qty||0);
+    catQty[c] = (catQty[c]||0) + (i.qty||0);
+  }));
+  const cats = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]);
+
+  // Top 5 itens (por receita)
+  const itemTotals = {};
+  vendas.forEach(v => (v.items||[]).forEach(i => {
+    const k = i.nome;
+    if (!itemTotals[k]) itemTotals[k] = { nome:k, qty:0, total:0 };
+    itemTotals[k].qty += i.qty||0;
+    itemTotals[k].total += (i.preco||0) * (i.qty||0);
+  }));
+  const topItens = Object.values(itemTotals).sort((a,b)=>b.total-a.total).slice(0,5);
+
+  // Forma de pagamento
+  const byMethod = {};
+  vendas.forEach(v => {
+    if (!byMethod[v.method]) byMethod[v.method] = 0;
+    byMethod[v.method] += v.total||0;
+  });
+
+  // Linha do tempo de presentes (até 10 pra não inflar)
+  const presLogShort = presencas.slice(-10).reverse();
+
+  cont.innerHTML = `
+    <div id="rel-card" style="background:linear-gradient(180deg,#181412,#0d0d0d);border:1px solid var(--border2);border-radius:14px;padding:28px 26px;max-width:760px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:4px">Relatório de evento · ${status}</div>
+          <div style="font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--text);line-height:1.2">${ev.nome||'(sem nome)'}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:5px">
+            ${dataIni?'Início: '+dataIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}
+            ${dataFim?' · Fim: '+dataFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}
+          </div>
+        </div>
+        <img src="https://terreirodocandieiro.com.br/logocandieiro.png" alt="Candieiro" style="width:54px;height:54px;object-fit:contain;opacity:.85" onerror="this.style.display='none'"/>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+        <div style="padding:14px;background:var(--green-bg);border:1px solid var(--green-bd);border-radius:10px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Bruto</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green);margin-top:4px">${fmt(total)}</div>
+        </div>
+        <div style="padding:14px;background:${lucro<0?'var(--red-bg)':'var(--gold-bg)'};border:1px solid ${lucro<0?'var(--red-bd)':'rgba(212,168,67,0.3)'};border-radius:10px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Líquido <span style="color:var(--text3);font-weight:500">(${margem.toFixed(0)}%)</span></div>
+          <div style="font-size:22px;font-weight:700;color:${lucro<0?'var(--red)':'var(--gold)'};margin-top:4px">${fmt(lucro)}</div>
+        </div>
+        <div style="padding:14px;background:rgba(52,152,219,0.1);border:1px solid rgba(52,152,219,0.25);border-radius:10px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Presentes</div>
+          <div style="font-size:22px;font-weight:700;color:#3498db;margin-top:4px">${totalPres}</div>
+        </div>
+        <div style="padding:14px;background:var(--glass2);border:1px solid var(--border);border-radius:10px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Vendas</div>
+          <div style="font-size:22px;font-weight:700;color:var(--text);margin-top:4px">${vendas.length}</div>
+        </div>
+      </div>
+
+      ${cats.length ? `
+      <div style="margin-bottom:22px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Volume por categoria</div>
+        ${cats.map(c => {
+          const pct = total > 0 ? (catTotals[c]/total*100) : 0;
+          return `<div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text)">${catIcon[c]||'📦'} ${catLabel[c]||c}</span><span style="color:var(--text2)">${fmt(catTotals[c])} <span style="color:var(--text3)">· ${pct.toFixed(0)}% · ${catQty[c]} un</span></span></div>
+            <div style="height:6px;background:var(--glass2);border-radius:3px;overflow:hidden"><div style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));width:${pct}%;transition:width .4s"></div></div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      ${topItens.length ? `
+      <div style="margin-bottom:22px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Top 5 itens</div>
+        ${topItens.map((it,idx) => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--glass2);border-radius:8px;margin-bottom:5px">
+            <div style="width:22px;height:22px;border-radius:50%;background:var(--gold-bg);color:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${idx+1}</div>
+            <div style="flex:1;font-size:13px;font-weight:500;color:var(--text)">${it.nome}</div>
+            <div style="font-size:12px;color:var(--text3)">${it.qty} un</div>
+            <div style="font-size:13px;font-weight:700;color:var(--gold);min-width:80px;text-align:right">${fmt(it.total)}</div>
+          </div>
+        `).join('')}
+      </div>` : ''}
+
+      ${Object.keys(byMethod).length ? `
+      <div style="margin-bottom:22px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Forma de pagamento</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+        ${Object.entries(byMethod).map(([m,v]) => {
+          const mLabel={dinheiro:'Dinheiro',pix:'Pix',debito:'Débito',credito:'Crédito'};
+          const mColor={dinheiro:'#2ecc71',pix:'#32bcad',debito:'#3498db',credito:'#d4a843'};
+          return `<div style="padding:10px 12px;background:var(--glass2);border-left:3px solid ${mColor[m]||'#888'};border-radius:6px">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">${mLabel[m]||m}</div>
+            <div style="font-size:15px;font-weight:700;color:${mColor[m]||'#888'};margin-top:2px">${fmt(v)}</div>
+          </div>`;
+        }).join('')}
+        </div>
+      </div>` : ''}
+
+      ${presLogShort.length ? `
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Últimos presentes (${presencas.length} registros, ${totalPres} pessoas)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${presLogShort.map(p => {
+          const tsD = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
+          const h = tsD.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          return `<span style="padding:4px 9px;background:var(--glass);border:1px solid var(--border);border-radius:12px;font-size:11.5px;color:var(--text2)"><strong style="color:var(--blue)">+${p.qtd||1}</strong> · ${h}</span>`;
+        }).join('')}
+        </div>
+      </div>` : ''}
+
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--border);font-size:10px;color:var(--text3);text-align:center;letter-spacing:.06em">
+        Terreiro do Candieiro · gerado em ${new Date().toLocaleString('pt-BR')}
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:center;gap:10px;margin-top:18px;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="compartilharRelatorio()" style="padding:12px 22px;font-size:14px;font-weight:600">📷 Salvar como imagem (PNG)</button>
+      <button class="btn-secondary" onclick="window.print()" style="padding:12px 22px;font-size:14px;font-weight:600">🖨️ Imprimir</button>
+    </div>
+  `;
+};
+
+// Salva o #rel-card como PNG. Usa html2canvas via CDN se disponível, senão sugere print.
+window.compartilharRelatorio = async function() {
+  const card = document.getElementById('rel-card');
+  if (!card) return;
+  // Carrega html2canvas sob demanda (CDN). Se já carregado, reutiliza.
+  if (typeof html2canvas !== 'function') {
+    toast('Carregando ferramenta de imagem...');
+    try {
+      await new Promise((res,rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    } catch(e) { toast('Não foi possível carregar. Use Imprimir → Salvar PDF','err'); return; }
+  }
+  try {
+    const canvas = await html2canvas(card, { backgroundColor:'#0d0d0d', scale:2 });
+    const link = document.createElement('a');
+    const evNome = (document.getElementById('rel-evt-sel').options[document.getElementById('rel-evt-sel').selectedIndex].text||'evento').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,40);
+    link.download = 'relatorio_' + evNome + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('Imagem salva. Manda pro Pai!','ok');
+  } catch(e) { console.error(e); toast('Erro ao gerar imagem','err'); }
+};
+
 function renderInsights() {
   const sales=getFS();
   const totalRev=sales.reduce((s,v)=>s+v.total,0);
