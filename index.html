@@ -116,12 +116,38 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 @media(max-width:680px){.pdv-grid{grid-template-columns:1fr}}
 
 /* QUICK BTNS */
-.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .qbtn{padding:11px 8px;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--rad);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);text-align:center;line-height:1.4;transition:all .18s}
 .qbtn:hover{background:var(--glass2);border-color:var(--border2);transform:translateY(-1px);box-shadow:0 3px 14px rgba(0,0,0,.3)}
 .qbtn:active{transform:scale(.97)}
 .qbtn .qprice{font-size:11px;color:var(--gold);margin-top:4px;font-weight:600}
 .qbtn.out{opacity:.35;cursor:not-allowed}
+
+/* CATEGORY BTNS — estilo McDonald's, grandes e fáceis de bater o olho */
+.cat-btn{padding:24px 14px;background:linear-gradient(135deg,var(--glass2),var(--glass));backdrop-filter:blur(12px);border:1.5px solid var(--border2);border-radius:14px;color:var(--text);font-family:var(--font);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:all .18s;min-height:120px}
+.cat-btn:hover{transform:translateY(-2px);box-shadow:0 6px 22px rgba(0,0,0,.35);border-color:var(--red)}
+.cat-btn:active{transform:scale(.97)}
+.cat-btn .cat-icon{font-size:34px;line-height:1}
+.cat-btn .cat-name{font-size:15px;font-weight:700;letter-spacing:.01em}
+.cat-btn .cat-count{font-size:11px;color:var(--text3);font-weight:600}
+
+/* MODAL CATEGORIA — overlay com produtos em botões grandes */
+.cat-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;z-index:200;padding:40px 20px;overflow-y:auto;animation:fadeIn .15s}
+.cat-modal-overlay.show{display:flex}
+.cat-modal{background:#181412;border:1px solid var(--border2);border-radius:16px;padding:24px;width:100%;max-width:880px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.cat-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px}
+.cat-modal-title{display:flex;align-items:center;gap:12px;font-size:18px;font-weight:700;color:var(--text)}
+.cat-modal-title .cat-icon-sm{font-size:26px}
+.cat-modal-close{width:36px;height:36px;border-radius:10px;background:var(--glass);border:1px solid var(--border2);color:var(--text2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--font);transition:all .15s}
+.cat-modal-close:hover{background:var(--red-bg);color:var(--red);border-color:var(--red-bd)}
+.cat-modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.cat-modal-item{padding:18px 12px;background:linear-gradient(135deg,var(--glass2),var(--glass));border:1px solid var(--border2);border-radius:12px;color:var(--text);font-family:var(--font);cursor:pointer;text-align:center;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;min-height:88px;transition:all .15s}
+.cat-modal-item:hover{transform:translateY(-1px);border-color:var(--red);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.cat-modal-item:active{transform:scale(.97)}
+.cat-modal-item .ci-nome{font-size:14px;font-weight:600;line-height:1.3}
+.cat-modal-item .ci-preco{font-size:12px;color:var(--gold);font-weight:700}
+.cat-modal-item .ci-est{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 
 /* CART */
 .cart-panel{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radlg);padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 24px rgba(0,0,0,.3)}
@@ -580,6 +606,20 @@ input[type="date"]{color-scheme:dark}
   </div>
 </div>
 
+<!-- MODAL CATEGORIA — produtos daquela categoria em botões grandes -->
+<div class="cat-modal-overlay" id="cat-modal" onclick="if(event.target===this)closeCat()">
+  <div class="cat-modal">
+    <div class="cat-modal-head">
+      <div class="cat-modal-title">
+        <span class="cat-icon-sm" id="cm-icon"></span>
+        <span id="cm-title"></span>
+      </div>
+      <button class="cat-modal-close" onclick="closeCat()" title="Fechar (Esc)">×</button>
+    </div>
+    <div class="cat-modal-grid" id="cm-grid"></div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="modal-del">
   <div class="modal">
@@ -748,17 +788,56 @@ document.addEventListener('keydown', function(e) {
   document.getElementById('barcode-input').focus();
 });
 
+// Nível 1: botões grandes por categoria (estilo McDonald's). Clica → modal com produtos.
+// Se quiser ver tudo de uma vez, é só ir digitando no campo de busca (já filtra por nome).
 function renderQuick() {
   const el = document.getElementById('quick-btns');
   if (!S.products.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Nenhum produto cadastrado ainda.</div>'; return; }
-  // Esconde produtos zerados da grade do PDV (eles continuam no Estoque pra repor).
-  // Tira a poluição que o pessoal estava resolvendo deletando — agora é automático.
   const disponiveis = S.products.filter(p => (p.estoque||0) > 0);
   if (!disponiveis.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Todos os itens estão zerados. Reponha no Estoque.</div>'; return; }
-  el.innerHTML = disponiveis.map(p =>
-    '<button class="qbtn" onclick="addToCart(\'' + p.id + '\')">' + p.nome + '<div class="qprice">' + fmt(p.preco) + '</div></button>'
-  ).join('');
+
+  // Agrupa por categoria (mantém ordem do catOrder + extras no fim)
+  const porCat = {};
+  disponiveis.forEach(p => { const c = p.categoria || 'outros'; (porCat[c] = porCat[c] || []).push(p); });
+  const cats = catOrder.filter(c => porCat[c]).concat(Object.keys(porCat).filter(c => !catOrder.includes(c)));
+
+  el.innerHTML = cats.map(c => {
+    const itens = porCat[c];
+    return '<button class="cat-btn" onclick="openCat(\'' + c + '\')">' +
+      '<div class="cat-icon">' + (catIcon[c]||'📦') + '</div>' +
+      '<div class="cat-name">' + (catLabel[c]||c) + '</div>' +
+      '<div class="cat-count">' + itens.length + ' ' + (itens.length===1?'item':'itens') + '</div>' +
+    '</button>';
+  }).join('');
 }
+
+window.openCat = function(cat) {
+  const itens = S.products.filter(p => (p.categoria||'outros') === cat && (p.estoque||0) > 0)
+    .sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+  document.getElementById('cm-icon').textContent = catIcon[cat]||'📦';
+  document.getElementById('cm-title').textContent = (catLabel[cat]||cat) + ' · ' + itens.length + ' ' + (itens.length===1?'item':'itens');
+  const grid = document.getElementById('cm-grid');
+  grid.innerHTML = itens.length === 0
+    ? '<div class="empty-state" style="grid-column:1/-1">Nada disponível nessa categoria.</div>'
+    : itens.map(p =>
+        '<button class="cat-modal-item" onclick="addFromCat(\'' + p.id + '\')">' +
+          '<div class="ci-nome">' + p.nome + '</div>' +
+          '<div class="ci-preco">' + fmt(p.preco) + '</div>' +
+          '<div class="ci-est">' + p.estoque + ' em estoque</div>' +
+        '</button>'
+      ).join('');
+  document.getElementById('cat-modal').classList.add('show');
+};
+window.closeCat = function() {
+  document.getElementById('cat-modal').classList.remove('show');
+  focusScan();
+};
+// Adiciona ao carrinho e mantém o modal aberto (UX de fila: bate vários do mesmo grupo)
+window.addFromCat = function(id) { addToCart(id); /* modal permanece aberto */ };
+// ESC fecha o modal de categoria
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('cat-modal').classList.contains('show')) closeCat();
+});
 
 window.addToCart = function(id) {
   const p = S.products.find(x => x.id===id); if(!p) return;
