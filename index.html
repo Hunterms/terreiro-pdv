@@ -189,6 +189,22 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .btn-presente:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(52,152,219,0.4)}
 .btn-presente:active{transform:translateY(0)}
 
+.presentes-breakdown{font-size:10.5px;color:var(--text3);margin-top:5px;line-height:1.3}
+.presentes-breakdown:empty{display:none}
+
+/* Modal demografia — pills selecionáveis */
+.pres-grp{margin-bottom:14px}
+.pres-grp-label{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:7px;line-height:1}
+.pres-pills{display:flex;gap:6px;flex-wrap:wrap}
+.pres-pill{padding:9px 14px;background:var(--glass);border:1.5px solid var(--border2);border-radius:18px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .15s}
+.pres-pill:hover{background:var(--glass2);color:var(--text);border-color:var(--border2)}
+.pres-pill.sel{background:var(--gold-bg);color:var(--gold);border-color:var(--gold);box-shadow:0 0 0 2px rgba(212,168,67,.15)}
+.pres-qty-row{display:flex;align-items:center;gap:10px}
+.pres-qty-btn{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--border2);background:var(--glass);color:var(--text);font-size:20px;cursor:pointer;font-family:var(--font);font-weight:600;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.pres-qty-btn:hover{background:var(--gold-bg);border-color:var(--gold);color:var(--gold)}
+.pres-qty-input{width:64px;height:42px;text-align:center;font-size:20px;font-weight:700;background:var(--glass);border:1.5px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--font-display);outline:none;-moz-appearance:textfield}
+.pres-qty-input::-webkit-outer-spin-button,.pres-qty-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
 /* CART */
 .cart-panel{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--radlg);padding:16px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 24px rgba(0,0,0,.3)}
 .cart-items{display:flex;flex-direction:column;gap:6px;min-height:130px}
@@ -478,10 +494,10 @@ input[type="date"]{color-scheme:dark}
           <div class="presentes-info">
             <div class="presentes-label">Presentes na gira</div>
             <div class="presentes-total"><span id="pres-total">0</span><span class="sublabel" id="pres-last"></span></div>
+            <div class="presentes-breakdown" id="pres-breakdown"></div>
           </div>
           <div class="presentes-btns">
-            <input class="presentes-input" type="number" min="1" max="99" id="pres-qty" value="1" title="Quantos chegaram agora?"/>
-            <button class="btn-presente" onclick="addPresente()">+ Chegou</button>
+            <button class="btn-presente" onclick="abrirPresenteModal()">+ Chegou</button>
           </div>
         </div>
         <div class="sec-lbl">Carrinho</div>
@@ -715,6 +731,57 @@ input[type="date"]{color-scheme:dark}
       <button class="cat-modal-close" onclick="closeCat()" title="Fechar (Esc)">×</button>
     </div>
     <div class="cat-modal-grid" id="cm-grid"></div>
+  </div>
+</div>
+
+<!-- MODAL DEMOGRAFIA — registro rápido de quem chegou -->
+<div class="modal-overlay" id="modal-pres" onclick="if(event.target===this)closePresModal()">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">Quem chegou?</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px">Toque o que se aplica. Tudo opcional — se quiser só contar, basta confirmar.</div>
+
+    <div class="pres-grp">
+      <div class="pres-grp-label">Quantas pessoas chegaram juntas</div>
+      <div class="pres-qty-row">
+        <button class="pres-qty-btn" onclick="presAjQty(-1)">−</button>
+        <input id="pres-modal-qty" type="number" min="1" max="99" value="1" class="pres-qty-input"/>
+        <button class="pres-qty-btn" onclick="presAjQty(1)">+</button>
+      </div>
+    </div>
+
+    <div class="pres-grp">
+      <div class="pres-grp-label">Gênero</div>
+      <div class="pres-pills" data-group="genero">
+        <button class="pres-pill" data-v="homem">👨 Homem</button>
+        <button class="pres-pill" data-v="mulher">👩 Mulher</button>
+      </div>
+    </div>
+
+    <div class="pres-grp">
+      <div class="pres-grp-label">Faixa etária</div>
+      <div class="pres-pills" data-group="faixa">
+        <button class="pres-pill" data-v="crianca">Criança</button>
+        <button class="pres-pill" data-v="jovem">Jovem</button>
+        <button class="pres-pill" data-v="adulto">Adulto</button>
+        <button class="pres-pill" data-v="idoso">Idoso</button>
+      </div>
+    </div>
+
+    <div class="pres-grp">
+      <div class="pres-grp-label">Etnia/raça (autodeclaração estimada)</div>
+      <div class="pres-pills" data-group="etnia">
+        <button class="pres-pill" data-v="branca">Branca</button>
+        <button class="pres-pill" data-v="parda">Parda</button>
+        <button class="pres-pill" data-v="preta">Pele negra</button>
+        <button class="pres-pill" data-v="indigena">Indígena</button>
+        <button class="pres-pill" data-v="amarela">Pele amarela</button>
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <button class="mbtn-cancel" onclick="closePresModal()">Cancelar</button>
+      <button class="mbtn-confirm" onclick="confirmarPresenca()">Registrar</button>
+    </div>
   </div>
 </div>
 
@@ -955,7 +1022,70 @@ function renderPresentes() {
   } else {
     document.getElementById('pres-last').textContent = '';
   }
+  // Breakdown demografia (M/F + faixa) na sidebar — só do que foi marcado
+  const br = document.getElementById('pres-breakdown');
+  if (br) {
+    const counts = { homem:0, mulher:0, crianca:0, jovem:0, adulto:0, idoso:0 };
+    presencas.forEach(p => {
+      const q = p.qtd||1;
+      if(p.genero && counts[p.genero] !== undefined) counts[p.genero] += q;
+      if(p.faixa && counts[p.faixa] !== undefined) counts[p.faixa] += q;
+    });
+    const parts = [];
+    if(counts.homem + counts.mulher > 0) parts.push(`${counts.homem}H · ${counts.mulher}M`);
+    const idades = [];
+    if(counts.crianca) idades.push(counts.crianca+' crianças');
+    if(counts.jovem)   idades.push(counts.jovem+' jovens');
+    if(counts.adulto)  idades.push(counts.adulto+' adultos');
+    if(counts.idoso)   idades.push(counts.idoso+' idosos');
+    if(idades.length) parts.push(idades.join(' · '));
+    br.textContent = parts.join(' · ');
+  }
 }
+
+// Estado temporário da seleção no modal de presença (reseta a cada abertura)
+const _presSel = { genero:null, faixa:null, etnia:null };
+window.abrirPresenteModal = function() {
+  if (!S.eventoAtivo) { toast('Inicie um evento antes','err'); return; }
+  // Limpa seleção e quantidade
+  _presSel.genero = null; _presSel.faixa = null; _presSel.etnia = null;
+  document.getElementById('pres-modal-qty').value = '1';
+  document.querySelectorAll('#modal-pres .pres-pill').forEach(b => b.classList.remove('sel'));
+  document.getElementById('modal-pres').classList.add('show');
+};
+window.closePresModal = function() {
+  document.getElementById('modal-pres').classList.remove('show');
+};
+window.presAjQty = function(d) {
+  const inp = document.getElementById('pres-modal-qty');
+  const n = Math.max(1, Math.min(99, (parseInt(inp.value)||1) + d));
+  inp.value = n;
+};
+// Bind: clique no pill marca/desmarca (single-select dentro de cada grupo)
+document.addEventListener('click', function(e) {
+  const pill = e.target.closest('#modal-pres .pres-pill');
+  if (!pill) return;
+  const grp = pill.parentElement.dataset.group;
+  const v = pill.dataset.v;
+  const novo = _presSel[grp] === v ? null : v;
+  _presSel[grp] = novo;
+  pill.parentElement.querySelectorAll('.pres-pill').forEach(b => b.classList.toggle('sel', b.dataset.v === novo));
+});
+window.confirmarPresenca = async function() {
+  const ev = S.eventoAtivo; if (!ev) { closePresModal(); return; }
+  const qtd = Math.max(1, Math.min(99, parseInt(document.getElementById('pres-modal-qty').value)||1));
+  const rec = { ts: new Date(), qtd };
+  if (_presSel.genero) rec.genero = _presSel.genero;
+  if (_presSel.faixa)  rec.faixa  = _presSel.faixa;
+  if (_presSel.etnia)  rec.etnia  = _presSel.etnia;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'eventos_caixa',ev.id), { presencas: arrayUnion(rec) });
+    closePresModal();
+    toast('+' + qtd + ' presente' + (qtd===1?'':'s'),'ok');
+  } catch(e) { toast('Erro ao registrar','err'); }
+  finally { setSyncing(false); }
+};
 
 // Eventos agendados pelo admin do site (terreiro-candieiro). Atualiza em tempo real.
 S.eventosSite = [];
@@ -1042,20 +1172,7 @@ window.encerrarEvento = async function() {
   finally { setSyncing(false); }
 };
 
-window.addPresente = async function() {
-  const ev = S.eventoAtivo; if (!ev) { toast('Inicie um evento antes','err'); return; }
-  const inp = document.getElementById('pres-qty');
-  const qtd = Math.max(1, Math.min(99, parseInt(inp.value)||1));
-  setSyncing(true);
-  try {
-    await updateDoc(doc(db,'eventos_caixa',ev.id), {
-      presencas: arrayUnion({ ts: new Date(), qtd })
-    });
-    inp.value = '1';
-    toast('+' + qtd + ' presente' + (qtd===1?'':'s') + ' registrado' + (qtd===1?'':'s'),'ok');
-  } catch(e) { toast('Erro ao registrar','err'); }
-  finally { setSyncing(false); }
-};
+// (deprecated) addPresente sem demografia foi substituído por abrirPresenteModal + confirmarPresenca
 
 function focusScan() { setTimeout(() => { try { document.getElementById('barcode-input').focus(); } catch(e){} }, 120); }
 
@@ -1503,6 +1620,41 @@ window.renderRelatorio = function() {
   // Linha do tempo de presentes (até 10 pra não inflar)
   const presLogShort = presencas.slice(-10).reverse();
 
+  // Demografia agregada (só conta o que foi marcado)
+  const demo = { genero:{}, faixa:{}, etnia:{} };
+  presencas.forEach(p => {
+    const q = p.qtd||1;
+    if(p.genero) demo.genero[p.genero] = (demo.genero[p.genero]||0) + q;
+    if(p.faixa)  demo.faixa[p.faixa]   = (demo.faixa[p.faixa]||0) + q;
+    if(p.etnia)  demo.etnia[p.etnia]   = (demo.etnia[p.etnia]||0) + q;
+  });
+  const labelDemo = {
+    homem:'Homens', mulher:'Mulheres',
+    crianca:'Crianças', jovem:'Jovens', adulto:'Adultos', idoso:'Idosos',
+    branca:'Brancas', parda:'Pardas', preta:'Pele negra', indigena:'Indígenas', amarela:'Pele amarela'
+  };
+  const renderDemoGroup = (titulo, obj) => {
+    const keys = Object.keys(obj); if (!keys.length) return '';
+    const tot = keys.reduce((s,k)=>s+obj[k],0);
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">${titulo}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${keys.map(k=>{
+          const pct = tot>0 ? Math.round(obj[k]/tot*100) : 0;
+          return `<span style="padding:4px 10px;background:var(--glass2);border:1px solid var(--border);border-radius:14px;font-size:12px;color:var(--text2)"><strong style="color:var(--text)">${obj[k]}</strong> ${labelDemo[k]||k} <span style="color:var(--text3)">· ${pct}%</span></span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  };
+  const demoHTML = (Object.keys(demo.genero).length || Object.keys(demo.faixa).length || Object.keys(demo.etnia).length)
+    ? `<div style="margin-bottom:22px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Demografia das pessoas presentes</div>
+        ${renderDemoGroup('Gênero', demo.genero)}
+        ${renderDemoGroup('Faixa etária', demo.faixa)}
+        ${renderDemoGroup('Etnia/raça', demo.etnia)}
+      </div>`
+    : '';
+
   cont.innerHTML = `
     <div id="rel-card" style="background:linear-gradient(180deg,#181412,#0d0d0d);border:1px solid var(--border2);border-radius:14px;padding:28px 26px;max-width:760px;margin:0 auto">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
@@ -1575,6 +1727,8 @@ window.renderRelatorio = function() {
         }).join('')}
         </div>
       </div>` : ''}
+
+      ${demoHTML}
 
       ${presLogShort.length ? `
       <div style="margin-bottom:18px">
