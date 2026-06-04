@@ -252,6 +252,14 @@ tr:hover td{background:var(--glass)}
 .b-del{width:32px;height:32px;border-radius:8px;border:none;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;color:var(--text3);flex-shrink:0}
 .b-del:hover{background:var(--red-bg);color:var(--red)}
 .b-del svg{width:15px;height:15px;pointer-events:none}
+.b-edit{width:32px;height:32px;border-radius:8px;border:none;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;color:var(--text3);flex-shrink:0}
+.b-edit:hover{background:var(--gold-bg);color:var(--gold)}
+.b-edit svg{width:15px;height:15px;pointer-events:none}
+.edit-banner{display:none;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(135deg,rgba(212,168,67,0.14),rgba(212,168,67,0.02));border:1px solid rgba(212,168,67,0.3);border-radius:var(--rad);margin-bottom:14px;font-size:13px}
+.edit-banner.show{display:flex}
+.edit-banner span{flex:1;color:var(--gold);font-weight:600}
+.edit-banner button{padding:6px 12px;background:transparent;border:1px solid var(--border2);color:var(--text2);font-size:12px;border-radius:7px;cursor:pointer;font-family:var(--font);font-weight:600}
+.edit-banner button:hover{background:var(--glass);color:var(--text)}
 .qty-sm{display:flex;align-items:center;gap:5px}
 
 /* FORMS */
@@ -498,6 +506,13 @@ input[type="date"]{color-scheme:dark}
 
   <!-- ESTOQUE -->
   <div id="panel-estoque" class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)">Estoque</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:3px">Digite a qtd direto, clique no ícone ✎ pra editar tudo do item.</div>
+      </div>
+      <button onclick="autoCategorizar()" style="padding:9px 16px;background:linear-gradient(135deg,var(--gold),var(--gold2));border:none;border-radius:9px;color:#1a1209;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .15s" title="Sugere categorias pelos nomes dos produtos (pode reverter editando)">✨ Auto-categorizar</button>
+    </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div class="tbl-wrap">
         <table>
@@ -566,6 +581,11 @@ input[type="date"]{color-scheme:dark}
 
   <!-- CADASTRO -->
   <div id="panel-cadastro" class="panel">
+    <div class="edit-banner" id="edit-banner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--gold);flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      <span>Editando produto</span>
+      <button onclick="cancelEdit()">Cancelar edição</button>
+    </div>
     <div class="hint-box">Para itens com tamanhos, cadastre cada variação separadamente: <strong>Guia G</strong>, <strong>Guia M</strong>, <strong>Guia P</strong> — cada uma com código e preço próprios.</div>
     <div class="card" style="display:flex;flex-direction:column;gap:14px">
       <div class="form-grid">
@@ -581,14 +601,11 @@ input[type="date"]{color-scheme:dark}
       <div class="form-grid">
         <div class="fg"><label>Categoria</label>
           <select id="f-cat">
-            <option value="salgados">Salgados</option>
-            <option value="doces">Doces / bomboniere</option>
-            <option value="bebidas">Bebidas</option>
-            <option value="guias">Guias</option>
-            <option value="velas">Velas</option>
-            <option value="defumacao">Defumação</option>
-            <option value="religioso">Artigo religioso</option>
-            <option value="outros">Outros</option>
+            <option value="salgados">🥟 Salgados</option>
+            <option value="doceria">🍬 Doceria</option>
+            <option value="bebidas">🥤 Bebidas</option>
+            <option value="religioso">🪔 Artigos religiosos</option>
+            <option value="outros">📦 Outros</option>
           </select>
         </div>
         <div class="fg"><label>Alerta mínimo (qtd)</label><input id="f-min" type="number" min="0" placeholder="5"/></div>
@@ -776,25 +793,28 @@ const loadTimeout = setTimeout(() => {
   document.getElementById('loading-retry').style.display = 'inline-block';
 }, 12000);
 
-// Categorias atuais + legado (cantina). Use catLabel[c]||c pra fallback de nomes futuros.
+// Categorias do começo — pediu pra simplificar pra: doceria, salgados, bebidas, religioso, outros.
+// Legados (cantina/doces/guias/velas/defumacao) ficam só pro fallback de produtos antigos —
+// não aparecem no dropdown de cadastro mas continuam renderizando se algum produto velho tiver.
 const catLabel = {
-  salgados:'Salgados', doces:'Doces', bebidas:'Bebidas',
-  guias:'Guias', velas:'Velas', defumacao:'Defumação',
+  salgados:'Salgados', doceria:'Doceria', bebidas:'Bebidas',
   religioso:'Art. religioso', outros:'Outros',
-  cantina:'Cantina (legado)' // pré-Onda 2 — mantém pra produtos antigos
+  // Legados:
+  doces:'Doceria', cantina:'Outros', guias:'Art. religioso', velas:'Art. religioso', defumacao:'Art. religioso'
 };
 const catIcon = {
-  salgados:'🥟', doces:'🍬', bebidas:'🥤',
-  guias:'📿', velas:'🕯️', defumacao:'🌿',
-  religioso:'🪔', outros:'📦', cantina:'🍴'
+  salgados:'🥟', doceria:'🍬', bebidas:'🥤',
+  religioso:'🪔', outros:'📦',
+  doces:'🍬', cantina:'📦', guias:'📿', velas:'🕯️', defumacao:'🌿'
 };
-const catOrder = ['salgados','doces','bebidas','guias','velas','defumacao','religioso','cantina','outros'];
+const catOrder = ['salgados','doceria','bebidas','religioso','outros'];
 const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 const cartTotal = () => S.cart.reduce((s,i) => s + i.preco * i.qty, 0);
 
 const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null, ip:'hoje',
   eventos:[],         // todos os eventos (abertos + fechados) pro relatório
-  eventoAtivo:null    // doc do evento aberto atual (ou null)
+  eventoAtivo:null,   // doc do evento aberto atual (ou null)
+  editId:null         // id do produto sendo editado em Cadastro (null = criar novo)
 };
 let hChart = null;
 
@@ -1174,7 +1194,7 @@ function renderEstoque() {
       '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><input class="qty-input" type="number" min="0" step="1" value="' + p.estoque + '" data-id="' + p.id + '" data-prev="' + p.estoque + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=this.dataset.prev;this.blur();}" onblur="setSt(this.dataset.id, this.value, this.dataset.prev)"/><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>' +
       '<td style="font-size:11px;color:var(--text3);font-family:monospace">' + p.codigo + '</td>' +
       '<td><span class="badge ' + st[0] + '">' + st[1] + '</span></td>' +
-      '<td style="text-align:center"><button class="b-del" onclick="askDel(\'' + p.id + '\')" title="Remover produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button></td>' +
+      '<td style="text-align:center;white-space:nowrap"><button class="b-edit" onclick="editProduct(\'' + p.id + '\')" title="Editar produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> <button class="b-del" onclick="askDel(\'' + p.id + '\')" title="Remover produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button></td>' +
     '</tr>';
   }).join('');
 }
@@ -1593,15 +1613,92 @@ window.saveProduct = async function() {
   const estoque=parseInt(document.getElementById('f-qtd').value)||0;
   const minimo=parseInt(document.getElementById('f-min').value)||5;
   if (!nome||!codigo||isNaN(preco)) { toast('Preencha nome, código e preço de venda.','err'); return; }
-  if (S.products.find(x=>x.codigo===codigo)) { toast('Código já cadastrado!','err'); return; }
+  // Conflito de código: só bloqueia se outro produto tiver esse código
+  const conflito = S.products.find(x => x.codigo===codigo && x.id !== S.editId);
+  if (conflito) { toast('Código já cadastrado em outro produto!','err'); return; }
   setSyncing(true);
   try {
-    await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo});
-    ['f-nome','f-codigo','f-preco','f-custo','f-qtd','f-min'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-    document.getElementById('bc-preview-wrap').style.display='none';
-    toast('Produto salvo com sucesso!','ok');
+    if (S.editId) {
+      // Edit mode: preserva ei (estoque inicial) e atualiza só os campos do form
+      await updateDoc(doc(db,'products',S.editId), { nome, codigo, preco, precoCusto, categoria, estoque, minimo });
+      toast('Produto atualizado!','ok');
+    } else {
+      await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo});
+      toast('Produto salvo com sucesso!','ok');
+    }
+    cancelEdit();
   } catch(e) { toast('Erro ao salvar. Verifique conexão.','err'); }
   finally { setSyncing(false); }
+};
+
+// Sai do modo edit e volta o form ao default de "novo produto"
+window.cancelEdit = function() {
+  S.editId = null;
+  ['f-nome','f-codigo','f-preco','f-custo','f-qtd','f-min'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const catSel = document.getElementById('f-cat'); if (catSel) catSel.value = 'salgados';
+  document.getElementById('bc-preview-wrap').style.display='none';
+  const banner = document.getElementById('edit-banner'); if (banner) banner.style.display = 'none';
+  const btn = document.querySelector('.btn-save'); if (btn) btn.textContent = 'Salvar produto';
+};
+
+// Abre o panel-cadastro e pré-preenche o form com o produto a editar
+window.editProduct = function(id) {
+  const p = S.products.find(x => x.id === id); if(!p) return;
+  S.editId = id;
+  document.querySelectorAll('.panel').forEach(pa => pa.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-cadastro').classList.add('active');
+  const navCadastro = Array.from(document.querySelectorAll('.nav button')).find(b => b.textContent.trim() === 'Cadastrar');
+  if (navCadastro) navCadastro.classList.add('active');
+  document.getElementById('f-nome').value = p.nome||'';
+  document.getElementById('f-codigo').value = p.codigo||'';
+  document.getElementById('f-preco').value = p.preco||'';
+  document.getElementById('f-custo').value = p.precoCusto||'';
+  document.getElementById('f-cat').value = p.categoria||'outros';
+  document.getElementById('f-qtd').value = p.estoque||0;
+  document.getElementById('f-min').value = p.minimo||5;
+  // Banner de aviso
+  const banner = document.getElementById('edit-banner');
+  if (banner) { banner.style.display = 'flex'; banner.querySelector('span').textContent = 'Editando: ' + p.nome; }
+  const btn = document.querySelector('.btn-save'); if (btn) btn.textContent = 'Atualizar produto';
+  try { previewBC(); } catch(e){}
+  document.getElementById('f-nome').focus();
+};
+
+// ── AUTO-CATEGORIZAR ─────────────────────────────────────────────────────
+// Olha o nome dos produtos e propõe categoria por padrão de texto. Útil pra
+// migrar a base existente de "cantina/outros" pras categorias novas.
+function _sugerirCategoria(nome) {
+  const n = (nome||'').toLowerCase();
+  if (/coxinha|pastel|empad|croissant|esfiha|esfirra|kibe|quibe|enrolad|salgad|risole|risoles|sanduic|sandui|sandu|sandwich|sandui|sandui|sandui|wrap|pao de queij/i.test(n)) return 'salgados';
+  if (/bolo|brigadeir|beijinho|cocada|doce|bombon|paçoc|pacoc|sonh|torta|cupcake|brownie|maca\s|maça\s|maca-?do?-?am|barr.de.cereal|chocolat|trufa|pirulit/i.test(n)) return 'doceria';
+  if (/coca|coke|guarana|guaraná|agua|água|suco|refri|cerveja|chop|chá|cha\s|cafe|café|gelad|h2oh|isotonic|gatorad|monster|red.?bull|matte|mate\s|leite/i.test(n)) return 'bebidas';
+  if (/vela|guia|incens|defum|erva|sabonete.?ax|sabonete.?cas|imagem|santo|santa|orixa|orixá|fita|patua|patuá|punho|busio|búzio|tabaco|cachaca|alguidar|charut|fumo/i.test(n)) return 'religioso';
+  return null; // sem palpite — fica em outros
+}
+
+window.autoCategorizar = async function() {
+  const sugestoes = S.products.map(p => {
+    const atual = p.categoria || 'outros';
+    const sugerida = _sugerirCategoria(p.nome);
+    return { p, atual, sugerida: sugerida || 'outros', mudou: (sugerida && sugerida !== atual) || (!sugerida && atual !== 'outros' && atual !== p.categoria) };
+  });
+  // Só mostra os que vão mudar
+  const vaiMudar = sugestoes.filter(s => s.sugerida !== s.atual);
+  if (vaiMudar.length === 0) { toast('Tudo já está categorizado.','ok'); return; }
+  const linhas = vaiMudar.slice(0,20).map(s =>
+    '• ' + s.p.nome + ' : ' + (catLabel[s.atual]||s.atual) + ' → ' + (catLabel[s.sugerida]||s.sugerida)
+  ).join('\n');
+  const extra = vaiMudar.length > 20 ? '\n... e mais ' + (vaiMudar.length-20) + ' produto(s)' : '';
+  if (!confirm('Vou recategorizar ' + vaiMudar.length + ' produto(s):\n\n' + linhas + extra + '\n\nConfirmar?')) return;
+  setSyncing(true);
+  let ok=0, erros=0;
+  for (const s of vaiMudar) {
+    try { await updateDoc(doc(db,'products',s.p.id), { categoria: s.sugerida }); ok++; }
+    catch(e) { erros++; }
+  }
+  setSyncing(false);
+  toast(ok + ' recategorizado' + (ok===1?'':'s') + (erros?' · ' + erros + ' erro(s)':''),'ok');
 };
 
 function renderBcGrid() {
