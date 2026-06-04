@@ -169,6 +169,13 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .ev-btn-primary:hover{background:rgba(212,168,67,0.18);color:var(--gold);border-color:var(--gold)}
 .ev-btn-danger:hover{background:var(--red-bg);color:var(--red);border-color:var(--red-bd)}
 
+/* Picker de evento — itens da lista da agenda do site */
+.ev-pick-item{display:flex;flex-direction:column;gap:3px;padding:11px 13px;background:var(--glass);border:1px solid var(--border2);border-radius:9px;color:var(--text);text-align:left;cursor:pointer;font-family:var(--font);transition:all .12s}
+.ev-pick-item:hover{background:var(--gold-bg);border-color:var(--gold);transform:translateY(-1px)}
+.ev-pick-item .ev-pick-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.25}
+.ev-pick-item .ev-pick-meta{font-size:11.5px;color:var(--text3);font-weight:500}
+.ev-pick-item:hover .ev-pick-name{color:var(--gold)}
+
 /* PRESENTES — contador de quem chegou */
 .presentes-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(52,152,219,0.08);border:1px solid rgba(52,152,219,0.22);border-radius:var(--rad);margin-bottom:8px}
 .presentes-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
@@ -711,6 +718,24 @@ input[type="date"]{color-scheme:dark}
   </div>
 </div>
 
+<!-- MODAL PICKER DE EVENTO — escolhe da agenda do site ou nome livre -->
+<div class="modal-overlay" id="modal-ev-pick" onclick="if(event.target===this)closeEvPick()">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">Iniciar evento no caixa</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">Toda venda e presente serão associados a esse evento.</div>
+    <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Próximos eventos agendados</div>
+    <div id="ev-pick-list" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;margin-bottom:14px;padding-right:4px"></div>
+    <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;padding-top:6px;border-top:1px dashed var(--border)">Outro evento (digite um nome)</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input class="fi" id="ev-pick-custom" type="text" placeholder="Ex: Festa do Dendê" style="flex:1;padding:10px 12px;background:var(--glass);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:14px;font-family:var(--font);outline:none"/>
+      <button class="ev-btn ev-btn-primary" onclick="iniciarEventoCustom()" style="padding:10px 16px">Iniciar</button>
+    </div>
+    <div class="modal-row">
+      <button class="mbtn-cancel" onclick="closeEvPick()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="modal-del">
   <div class="modal">
@@ -740,9 +765,19 @@ const firebaseConfig = {
   messagingSenderId: "365180068240",
   appId: "1:365180068240:web:7b2fe25ca670781f585315"
 };
+// Segundo Firebase: terreiro-candieiro (CMS do site) — pra puxar os eventos
+// agendados (giras, festas, apresentações culturais) e usar como sugestão
+// no picker de "Iniciar evento" do PDV.
+const cfgCand = {
+  apiKey: "AIzaSyAViFU3bdl8RKSHBuxMGAc97SPITd1aJWM",
+  authDomain: "terreiro-candieiro.firebaseapp.com",
+  projectId: "terreiro-candieiro",
+  appId: "1:100068133826:web:aa6bea82298a266737a45b"
+};
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const dbCand = getFirestore(initializeApp(cfgCand, 'cand'));
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 const CREDENTIALS = [
@@ -922,22 +957,64 @@ function renderPresentes() {
   }
 }
 
-window.abrirEventoPrompt = async function() {
-  const nome = prompt('Nome do evento (ex: Gira de Pretos Velhos, Festa do Dendê):');
-  if (!nome || !nome.trim()) return;
+// Eventos agendados pelo admin do site (terreiro-candieiro). Atualiza em tempo real.
+S.eventosSite = [];
+onSnapshot(query(collection(dbCand,'eventos'), orderBy('data','asc')), snap => {
+  const hojeISO = new Date().toISOString().slice(0,10);
+  S.eventosSite = snap.docs
+    .map(d => ({ id:d.id, ...d.data() }))
+    .filter(e => !e.arquivado && (e.data||'') >= hojeISO);
+});
+
+function _eventoSiteLabel(e) {
+  if (!e) return '';
+  const dt = e.data ? new Date(e.data+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'}) : '?';
+  const hora = e.hora ? ' às ' + e.hora : '';
+  return (e.nome||e.titulo||'Evento') + ' · ' + dt + hora;
+}
+
+// Substitui o prompt() por modal com lista de eventos do site + opção manual.
+window.abrirEventoPrompt = function() {
+  const proximos = (S.eventosSite||[]).slice(0,15);
+  const lista = proximos.length === 0
+    ? '<div class="empty-state" style="padding:18px;font-size:13px">Nenhum evento agendado no site. Use "Outro evento" abaixo.</div>'
+    : proximos.map(e => `
+        <button class="ev-pick-item" onclick="iniciarEventoDoSite('${e.id}', ${JSON.stringify(e.nome||e.titulo||'Evento').replace(/'/g,'&#39;').replace(/"/g,'&quot;')})">
+          <div class="ev-pick-name">${e.nome||e.titulo||'Evento'}</div>
+          <div class="ev-pick-meta">${e.data ? new Date(e.data+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}) : '?'}${e.hora?' · '+e.hora:''}${e.local?' · '+e.local:''}</div>
+        </button>`).join('');
+  document.getElementById('ev-pick-list').innerHTML = lista;
+  document.getElementById('ev-pick-custom').value = '';
+  document.getElementById('modal-ev-pick').classList.add('show');
+};
+window.closeEvPick = function() {
+  document.getElementById('modal-ev-pick').classList.remove('show');
+};
+window.iniciarEventoDoSite = async function(siteEventoId, nome) {
+  await _abrirEventoNoCaixa(nome, siteEventoId);
+  closeEvPick();
+};
+window.iniciarEventoCustom = async function() {
+  const nome = document.getElementById('ev-pick-custom').value.trim();
+  if (!nome) { toast('Digite um nome ou escolha da lista','err'); return; }
+  await _abrirEventoNoCaixa(nome, null);
+  closeEvPick();
+};
+async function _abrirEventoNoCaixa(nome, siteEventoId) {
   setSyncing(true);
   try {
     await addDoc(collection(db,'eventos_caixa'), {
-      nome: nome.trim(),
+      nome: (nome||'').trim() || 'Evento',
+      siteEventoId: siteEventoId || null,
       status: 'aberto',
       abertoEm: serverTimestamp(),
       fechadoEm: null,
       presencas: []
     });
-    toast('Evento "' + nome.trim() + '" iniciado.','ok');
+    toast('Evento "' + nome + '" iniciado.','ok');
   } catch(e) { toast('Erro ao abrir evento','err'); }
   finally { setSyncing(false); }
-};
+}
 
 window.editarNomeEvento = async function() {
   const ev = S.eventoAtivo; if (!ev) return;
