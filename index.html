@@ -728,8 +728,12 @@ document.addEventListener('keydown', function(e) {
 function renderQuick() {
   const el = document.getElementById('quick-btns');
   if (!S.products.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Nenhum produto cadastrado ainda.</div>'; return; }
-  el.innerHTML = S.products.map(p =>
-    '<button class="qbtn' + (p.estoque<=0?' out':'') + '" onclick="addToCart(\'' + p.id + '\')">' + p.nome + '<div class="qprice">' + fmt(p.preco) + '</div></button>'
+  // Esconde produtos zerados da grade do PDV (eles continuam no Estoque pra repor).
+  // Tira a poluição que o pessoal estava resolvendo deletando — agora é automático.
+  const disponiveis = S.products.filter(p => (p.estoque||0) > 0);
+  if (!disponiveis.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Todos os itens estão zerados. Reponha no Estoque.</div>'; return; }
+  el.innerHTML = disponiveis.map(p =>
+    '<button class="qbtn" onclick="addToCart(\'' + p.id + '\')">' + p.nome + '<div class="qprice">' + fmt(p.preco) + '</div></button>'
   ).join('');
 }
 
