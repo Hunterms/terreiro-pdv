@@ -275,9 +275,14 @@ tr:hover td{background:var(--glass)}
 .mbtn-confirm{background:linear-gradient(135deg,var(--red),var(--red2));border:none;color:white;box-shadow:0 2px 10px rgba(230,51,41,0.3)}
 .mbtn-danger{background:var(--red-bg);border:1px solid var(--red-bd);color:var(--red)}
 .mbtn-danger:hover{background:rgba(230,51,41,0.18)}
-.cash-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .cb{padding:9px;background:var(--glass);border:1px solid var(--border2);border-radius:var(--rad);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);text-align:center;transition:all .15s;backdrop-filter:blur(12px)}
 .cb:hover{background:var(--glass2);color:var(--text);border-color:var(--border2)}
+/* Botão Exato gigante — feito pra acertar de primeira na correria */
+.cb-exact{padding:18px;font-size:16px;font-weight:700;background:linear-gradient(135deg,var(--green-bg),rgba(46,204,113,.04));border:1.5px solid var(--green-bd);color:var(--green);letter-spacing:.02em;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;text-transform:uppercase}
+.cb-exact:hover{background:linear-gradient(135deg,rgba(46,204,113,.18),rgba(46,204,113,.06));color:var(--green);border-color:var(--green);transform:translateY(-1px);box-shadow:0 4px 14px rgba(46,204,113,.18)}
+.cb-exact svg{width:18px;height:18px;flex-shrink:0}
+.cb-exact:active{transform:translateY(0)}
 .change-box{padding:12px;border-radius:var(--rad);text-align:center;font-size:14px;font-weight:700;display:none;letter-spacing:.02em}
 .cb-pos{background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)}
 .cb-neg{background:var(--red-bg);color:var(--red);border:1px solid var(--red-bd)}
@@ -525,13 +530,16 @@ input[type="date"]{color-scheme:dark}
       <div style="font-size:13px;color:var(--text2)">Total: <strong id="mt-d" style="color:var(--green)"></strong></div>
       <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Valor recebido</div>
       <input class="cash-input" id="cash-in" type="number" step="0.01" min="0" placeholder="0,00" oninput="updateChange()"/>
+      <button class="cb cb-exact" onclick="setCashExact()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Valor exato
+      </button>
       <div class="cash-grid">
         <button class="cb" onclick="setCash(5)">R$5</button>
         <button class="cb" onclick="setCash(10)">R$10</button>
         <button class="cb" onclick="setCash(20)">R$20</button>
         <button class="cb" onclick="setCash(50)">R$50</button>
         <button class="cb" onclick="setCash(100)">R$100</button>
-        <button class="cb" onclick="setCashExact()">Exato</button>
         <button class="cb" onclick="setCash(200)">R$200</button>
       </div>
       <div class="change-box" id="change-box"></div>
