@@ -172,6 +172,7 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .metric.gold{--clr:var(--gold);--clr-glow:rgba(212,168,67,0.08)}
 .metric.blue{--clr:var(--blue);--clr-glow:rgba(52,152,219,0.08)}
 .metric.red{--clr:var(--red);--clr-glow:rgba(230,51,41,0.08)}
+.metric.red{--clr:var(--red);--clr-glow:rgba(230,51,41,0.08)}
 
 /* HIST */
 .hist-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
@@ -419,15 +420,17 @@ input[type="date"]{color-scheme:dark}
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th style="width:30%;padding-left:16px">Produto</th>
-            <th style="width:13%">Categoria</th>
-            <th style="width:12%">Preço</th>
-            <th style="width:17%">Qtd</th>
-            <th style="width:12%">Código</th>
-            <th style="width:10%">Status</th>
+            <th style="width:26%;padding-left:16px">Produto</th>
+            <th style="width:12%">Categoria</th>
+            <th style="width:10%">Venda</th>
+            <th style="width:10%">Custo</th>
+            <th style="width:8%">Margem</th>
+            <th style="width:15%">Qtd</th>
+            <th style="width:9%">Código</th>
+            <th style="width:8%">Status</th>
             <th style="width:5%;text-align:center"></th>
           </tr></thead>
-          <tbody id="estoque-tbody"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+          <tbody id="estoque-tbody"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -490,19 +493,27 @@ input[type="date"]{color-scheme:dark}
         </div>
       </div>
       <div class="form-grid">
-        <div class="fg"><label>Preço (R$)</label><input id="f-preco" type="number" step="0.01" min="0" placeholder="0,00" oninput="previewBC()"/></div>
+        <div class="fg"><label>Preço de venda (R$)</label><input id="f-preco" type="number" step="0.01" min="0" placeholder="0,00" oninput="previewBC()"/></div>
+        <div class="fg"><label>Preço de custo (R$) <span style="font-size:10px;color:var(--text3);font-weight:400">— quanto pagou pra comprar</span></label><input id="f-custo" type="number" step="0.01" min="0" placeholder="0,00"/></div>
+      </div>
+      <div class="form-grid">
         <div class="fg"><label>Categoria</label>
           <select id="f-cat">
-            <option value="cantina">Cantina</option>
+            <option value="salgados">Salgados</option>
+            <option value="doces">Doces / bomboniere</option>
             <option value="bebidas">Bebidas</option>
-            <option value="religioso">Artigo Religioso</option>
+            <option value="guias">Guias</option>
+            <option value="velas">Velas</option>
+            <option value="defumacao">Defumação</option>
+            <option value="religioso">Artigo religioso</option>
             <option value="outros">Outros</option>
           </select>
         </div>
+        <div class="fg"><label>Alerta mínimo (qtd)</label><input id="f-min" type="number" min="0" placeholder="5"/></div>
       </div>
       <div class="form-grid">
         <div class="fg"><label>Qtd inicial em estoque</label><input id="f-qtd" type="number" min="0" placeholder="0"/></div>
-        <div class="fg"><label>Alerta mínimo (qtd)</label><input id="f-min" type="number" min="0" placeholder="5"/></div>
+        <div class="fg"></div>
       </div>
       <div id="bc-preview-wrap" style="display:none">
         <div class="divider"></div>
@@ -655,7 +666,19 @@ const loadTimeout = setTimeout(() => {
   document.getElementById('loading-retry').style.display = 'inline-block';
 }, 12000);
 
-const catLabel = {cantina:'Cantina',bebidas:'Bebidas',religioso:'Art. Rel.',outros:'Outros'};
+// Categorias atuais + legado (cantina). Use catLabel[c]||c pra fallback de nomes futuros.
+const catLabel = {
+  salgados:'Salgados', doces:'Doces', bebidas:'Bebidas',
+  guias:'Guias', velas:'Velas', defumacao:'Defumação',
+  religioso:'Art. religioso', outros:'Outros',
+  cantina:'Cantina (legado)' // pré-Onda 2 — mantém pra produtos antigos
+};
+const catIcon = {
+  salgados:'🥟', doces:'🍬', bebidas:'🥤',
+  guias:'📿', velas:'🕯️', defumacao:'🌿',
+  religioso:'🪔', outros:'📦', cantina:'🍴'
+};
+const catOrder = ['salgados','doces','bebidas','guias','velas','defumacao','religioso','cantina','outros'];
 const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 const cartTotal = () => S.cart.reduce((s,i) => s + i.preco * i.qty, 0);
 
@@ -835,9 +858,15 @@ window.confirmSale = async function() {
       return updateDoc(doc(db,'products',item.id), { estoque:(p.estoque-item.qty) });
     });
     await Promise.all(updates);
+    // Snapshot do custo no momento da venda (futuras edições de produto não alteram histórico)
+    const itemsWithCost = S.cart.map(i => {
+      const p = S.products.find(x => x.id===i.id);
+      return { id:i.id, nome:i.nome, preco:i.preco, qty:i.qty, categoria:p?.categoria||'outros', precoCusto:Number(p?.precoCusto)||0 };
+    });
+    const custoTotal = itemsWithCost.reduce((s,i) => s + i.precoCusto * i.qty, 0);
     await addDoc(collection(db,'sales'), {
-      items: S.cart.map(i => ({ id:i.id, nome:i.nome, preco:i.preco, qty:i.qty })),
-      total, method:S.pm,
+      items: itemsWithCost,
+      total, custoTotal, method:S.pm,
       time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
       ts: serverTimestamp()
     });
@@ -849,13 +878,20 @@ window.closePay = () => document.getElementById('modal-pay').classList.remove('s
 
 function renderEstoque() {
   const tbody = document.getElementById('estoque-tbody');
-  if (!S.products.length) { tbody.innerHTML='<tr><td colspan="7" class="empty-state">Nenhum produto cadastrado.</td></tr>'; return; }
+  if (!S.products.length) { tbody.innerHTML='<tr><td colspan="9" class="empty-state">Nenhum produto cadastrado.</td></tr>'; return; }
   tbody.innerHTML = S.products.map(p => {
     const st = p.estoque===0 ? ['b-out','Sem estoque'] : p.estoque<=p.minimo ? ['b-low','Baixo'] : ['b-ok','OK'];
+    const custo = Number(p.precoCusto)||0;
+    const margem = (custo > 0 && p.preco > 0) ? ((p.preco - custo) / p.preco * 100) : null;
+    const margemHTML = margem === null
+      ? '<span style="color:var(--text3);font-size:11px">—</span>'
+      : '<span style="font-weight:600;color:' + (margem < 0 ? 'var(--red)' : margem < 20 ? 'var(--gold)' : 'var(--green)') + '">' + margem.toFixed(0) + '%</span>';
     return '<tr>' +
       '<td style="padding-left:16px;font-weight:500">' + p.nome + '</td>' +
       '<td style="color:var(--text2)">' + (catLabel[p.categoria]||p.categoria) + '</td>' +
       '<td style="font-weight:600;color:var(--gold)">' + fmt(p.preco) + '</td>' +
+      '<td style="color:var(--text2)">' + (custo > 0 ? fmt(custo) : '<span style="color:var(--text3);font-size:11px">—</span>') + '</td>' +
+      '<td>' + margemHTML + '</td>' +
       '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><input class="qty-input" type="number" min="0" step="1" value="' + p.estoque + '" data-id="' + p.id + '" data-prev="' + p.estoque + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=this.dataset.prev;this.blur();}" onblur="setSt(this.dataset.id, this.value, this.dataset.prev)"/><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>' +
       '<td style="font-size:11px;color:var(--text3);font-family:monospace">' + p.codigo + '</td>' +
       '<td><span class="badge ' + st[0] + '">' + st[1] + '</span></td>' +
@@ -944,9 +980,16 @@ function renderCaixa() {
   const ts = S.sales.filter(s => s.ts >= dayStart && s.ts <= dayEnd);
   const total = ts.reduce((s,v)=>s+v.total, 0);
   const qty = ts.length;
+  // Custo + lucro: usa snapshot da venda (s.custoTotal). Vendas antigas sem custo entram com 0
+  // (margem aparece como 100% — esperado, pq sem dado de custo não dá pra calcular).
+  const custoTot = ts.reduce((s,v)=>s+(Number(v.custoTotal)||0), 0);
+  const lucro = total - custoTot;
+  const margemPct = total > 0 ? (lucro/total*100) : 0;
+  const lucroCor = lucro < 0 ? 'red' : margemPct < 20 ? 'gold' : 'green';
 
   document.getElementById('caixa-metrics').innerHTML =
     '<div class="metric green"><div class="ml">Receita' + (isToday?' do dia':''  ) + '</div><div class="mv">' + fmt(total) + '</div></div>' +
+    '<div class="metric ' + lucroCor + '"><div class="ml">Lucro líquido <span style="font-size:10px;color:var(--text3)">(receita − custo)</span></div><div class="mv">' + fmt(lucro) + '<span style="font-size:12px;color:var(--text3);margin-left:6px">' + margemPct.toFixed(0) + '%</span></div></div>' +
     '<div class="metric blue"><div class="ml">Vendas realizadas</div><div class="mv">' + qty + '</div></div>' +
     '<div class="metric gold"><div class="ml">Ticket médio</div><div class="mv">' + fmt(qty?total/qty:0) + '</div></div>';
 
@@ -1088,15 +1131,16 @@ window.saveProduct = async function() {
   const nome=document.getElementById('f-nome').value.trim();
   const codigo=document.getElementById('f-codigo').value.trim();
   const preco=parseFloat(document.getElementById('f-preco').value);
+  const precoCusto=parseFloat(document.getElementById('f-custo').value)||0;
   const categoria=document.getElementById('f-cat').value;
   const estoque=parseInt(document.getElementById('f-qtd').value)||0;
   const minimo=parseInt(document.getElementById('f-min').value)||5;
-  if (!nome||!codigo||isNaN(preco)) { toast('Preencha nome, código e preço.','err'); return; }
+  if (!nome||!codigo||isNaN(preco)) { toast('Preencha nome, código e preço de venda.','err'); return; }
   if (S.products.find(x=>x.codigo===codigo)) { toast('Código já cadastrado!','err'); return; }
   setSyncing(true);
   try {
-    await addDoc(collection(db,'products'),{nome,codigo,preco,categoria,estoque,ei:estoque,minimo});
-    ['f-nome','f-codigo','f-preco','f-qtd','f-min'].forEach(id=>document.getElementById(id).value='');
+    await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo});
+    ['f-nome','f-codigo','f-preco','f-custo','f-qtd','f-min'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('bc-preview-wrap').style.display='none';
     toast('Produto salvo com sucesso!','ok');
   } catch(e) { toast('Erro ao salvar. Verifique conexão.','err'); }
