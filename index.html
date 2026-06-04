@@ -131,6 +131,9 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .qty-ctrl{display:flex;align-items:center;gap:5px}
 .qc-btn{width:24px;height:24px;border-radius:7px;border:1px solid var(--border2);background:var(--glass);color:var(--text);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;font-family:var(--font);transition:background .1s;line-height:1;flex-shrink:0}
 .qc-btn:hover{background:var(--glass2)}
+.qty-input{width:52px;text-align:center;font-size:13px;font-weight:600;padding:4px 2px;border:1px solid var(--border2);border-radius:6px;background:var(--glass);color:var(--text);font-family:var(--font);outline:none;-moz-appearance:textfield}
+.qty-input::-webkit-outer-spin-button,.qty-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.qty-input:focus{border-color:var(--red);background:var(--glass2)}
 .ci-qty{font-size:13px;font-weight:600;min-width:20px;text-align:center;color:var(--text)}
 .ci-sub{font-size:12px;color:var(--gold);min-width:56px;text-align:right;font-weight:600}
 .ci-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:0 2px;line-height:1;transition:color .1s}
@@ -841,7 +844,7 @@ function renderEstoque() {
       '<td style="padding-left:16px;font-weight:500">' + p.nome + '</td>' +
       '<td style="color:var(--text2)">' + (catLabel[p.categoria]||p.categoria) + '</td>' +
       '<td style="font-weight:600;color:var(--gold)">' + fmt(p.preco) + '</td>' +
-      '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><span style="font-size:13px;min-width:24px;text-align:center;font-weight:600">' + p.estoque + '</span><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>' +
+      '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><input class="qty-input" type="number" min="0" step="1" value="' + p.estoque + '" data-id="' + p.id + '" data-prev="' + p.estoque + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=this.dataset.prev;this.blur();}" onblur="setSt(this.dataset.id, this.value, this.dataset.prev)"/><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>' +
       '<td style="font-size:11px;color:var(--text3);font-family:monospace">' + p.codigo + '</td>' +
       '<td><span class="badge ' + st[0] + '">' + st[1] + '</span></td>' +
       '<td style="text-align:center"><button class="b-del" onclick="askDel(\'' + p.id + '\')" title="Remover produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button></td>' +
@@ -853,6 +856,21 @@ window.adjSt = async function(id,d) {
   setSyncing(true);
   await updateDoc(doc(db,'products',id),{estoque:Math.max(0,p.estoque+d)});
   setSyncing(false);
+};
+// Set estoque diretamente via digitação no input
+window.setSt = async function(id, val, prev) {
+  const n = parseInt(val, 10);
+  const prevN = parseInt(prev, 10);
+  // Sem mudança ou inválido: restaura
+  if (isNaN(n) || n < 0) { renderEstoque(); toast('Quantidade inválida','err'); return; }
+  if (n === prevN) return;
+  const p = S.products.find(x => x.id === id); if (!p) return;
+  setSyncing(true);
+  try {
+    await updateDoc(doc(db,'products',id), { estoque: n });
+    toast(p.nome + ': ' + prevN + ' → ' + n,'ok');
+  } catch(e) { toast('Erro ao salvar','err'); renderEstoque(); }
+  finally { setSyncing(false); }
 };
 window.askDel = function(id) {
   const p=S.products.find(x=>x.id===id); if(!p) return;
