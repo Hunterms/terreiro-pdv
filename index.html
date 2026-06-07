@@ -981,6 +981,7 @@ onSnapshot(query(collection(db,'eventos_caixa'), orderBy('abertoEm','desc')), sn
     if (curr) sel.value = curr;
   }
   if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
+  scheduleAutoOpen(); // re-checa quando estado de eventos_caixa muda
 });
 
 function renderEventBar() {
@@ -996,10 +997,11 @@ function renderEventBar() {
     return;
   }
   bar.classList.remove('empty');
-  document.getElementById('ev-name').textContent = ev.nome || '(sem nome)';
+  document.getElementById('ev-name').textContent = (ev.nome || '(sem nome)') + (ev.abertoAuto ? ' · auto' : '');
   const inicio = ev.abertoEm ? ev.abertoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
   const totalPres = (ev.presencas||[]).reduce((s,p)=>s+(p.qtd||1),0);
-  document.getElementById('ev-meta').textContent = 'iniciado às ' + inicio + ' · ' + totalPres + ' presente' + (totalPres===1?'':'s');
+  const prefix = ev.abertoAuto ? 'aberto auto da agenda · ' : 'iniciado às ' + inicio + ' · ';
+  document.getElementById('ev-meta').textContent = prefix + totalPres + ' presente' + (totalPres===1?'':'s');
   document.getElementById('event-bar-acts').innerHTML =
     '<button class="ev-btn" onclick="editarNomeEvento()">Renomear</button>' +
     '<button class="ev-btn ev-btn-danger" onclick="encerrarEvento()">Encerrar evento</button>';
@@ -1094,7 +1096,67 @@ onSnapshot(query(collection(dbCand,'eventos'), orderBy('data','asc')), snap => {
   S.eventosSite = snap.docs
     .map(d => ({ id:d.id, ...d.data() }))
     .filter(e => !e.arquivado && (e.data||'') >= hojeISO);
+  scheduleAutoOpen(); // re-checa quando agenda do site muda
 });
+
+// ── AUTO-OPEN: se o terreiro tem evento HOJE na agenda do site, abre auto.
+// O evento ativo do PDV vai de 00:00 a 23:59 do dia da gira. Fora disso, fecha.
+let _autoOpenScheduled = false;
+function scheduleAutoOpen() {
+  if (_autoOpenScheduled) return;
+  _autoOpenScheduled = true;
+  setTimeout(() => { _autoOpenScheduled = false; autoOpenEventoHoje(); }, 500);
+}
+
+async function autoOpenEventoHoje() {
+  if (!Array.isArray(S.eventos) || !Array.isArray(S.eventosSite)) return;
+  const hojeISO = new Date().toISOString().slice(0,10);
+
+  // 1. Fecha eventos abertos AUTOMATICAMENTE cuja data já passou (não mexe nos manuais)
+  const stale = S.eventos.filter(e =>
+    e.status === 'aberto' && e.abertoAuto && e.data && e.data < hojeISO
+  );
+  for (const s of stale) {
+    try {
+      await updateDoc(doc(db,'eventos_caixa', s.id), {
+        status: 'fechado',
+        fechadoEm: serverTimestamp(),
+        fechadoAuto: true
+      });
+    } catch (err) { console.warn('fail close stale', err); }
+  }
+
+  // 2. Já existe algum aberto? Não cria outro (manual + auto não convivem)
+  const algumAberto = S.eventos.some(e => e.status === 'aberto');
+  if (algumAberto) return;
+
+  // 3. Tem evento na agenda do site pra hoje?
+  const eventosHoje = S.eventosSite
+    .filter(e => e.data === hojeISO)
+    .sort((a,b) => (a.hora||'').localeCompare(b.hora||''));
+  if (eventosHoje.length === 0) return;
+  const evHoje = eventosHoje[0];
+
+  // 4. Anti-dupe: já criamos pra esse siteEventoId hoje? (mesmo fechado, não recria)
+  const existente = S.eventos.find(e =>
+    e.siteEventoId === evHoje.id && e.data === hojeISO
+  );
+  if (existente) return;
+
+  try {
+    await addDoc(collection(db,'eventos_caixa'), {
+      nome: evHoje.nome || evHoje.titulo || 'Evento',
+      siteEventoId: evHoje.id,
+      data: hojeISO,
+      status: 'aberto',
+      abertoEm: serverTimestamp(),
+      fechadoEm: null,
+      presencas: [],
+      abertoAuto: true
+    });
+    toast('Evento "' + (evHoje.nome||'Evento') + '" aberto automaticamente','ok');
+  } catch (e) { console.warn('fail auto-open', e); }
+}
 
 function _eventoSiteLabel(e) {
   if (!e) return '';
