@@ -1730,17 +1730,49 @@ window.renderRelatorio = function() {
 
       ${demoHTML}
 
-      ${presLogShort.length ? `
-      <div style="margin-bottom:18px">
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:10px">Últimos presentes (${presencas.length} registros, ${totalPres} pessoas)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${presLogShort.map(p => {
+      ${presencas.length ? (() => {
+        // TODOS os registros (não só últimos 10), do mais recente pro mais antigo
+        const todosOrdenados = presencas.slice().sort((a,b) => {
+          const ta = a.ts?.toDate ? a.ts.toDate().getTime() : (a.ts?.seconds ? a.ts.seconds*1000 : 0);
+          const tb = b.ts?.toDate ? b.ts.toDate().getTime() : (b.ts?.seconds ? b.ts.seconds*1000 : 0);
+          return tb - ta;
+        });
+        const semDemo = presencas.filter(p => !p.genero && !p.faixa && !p.etnia).length;
+        const semDemoQtd = presencas.filter(p => !p.genero && !p.faixa && !p.etnia).reduce((s,p)=>s+(p.qtd||1),0);
+        const labelTag = {
+          homem:'H', mulher:'M',
+          crianca:'Criança', jovem:'Jovem', adulto:'Adulto', idoso:'Idoso',
+          branca:'Branca', parda:'Parda', preta:'Pele negra', indigena:'Indígena', amarela:'Pele amarela'
+        };
+        const corTag = { homem:'#3498db', mulher:'#e91e63', crianca:'#2ecc71', jovem:'#2ecc71', adulto:'#2ecc71', idoso:'#2ecc71', branca:'#d4a843', parda:'#d4a843', preta:'#d4a843', indigena:'#d4a843', amarela:'#d4a843' };
+        const linha = (p, idx) => {
           const tsD = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
-          const h = tsD.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-          return `<span style="padding:4px 9px;background:var(--glass);border:1px solid var(--border);border-radius:12px;font-size:11.5px;color:var(--text2)"><strong style="color:var(--blue)">+${p.qtd||1}</strong> · ${h}</span>`;
-        }).join('')}
-        </div>
-      </div>` : ''}
+          const h = tsD.toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+          const tags = [];
+          if(p.genero) tags.push({label:labelTag[p.genero]||p.genero, cor:corTag[p.genero]});
+          if(p.faixa)  tags.push({label:labelTag[p.faixa]||p.faixa, cor:corTag[p.faixa]});
+          if(p.etnia)  tags.push({label:labelTag[p.etnia]||p.etnia, cor:corTag[p.etnia]});
+          const chipsHTML = tags.length
+            ? tags.map(t => `<span style="padding:1px 7px;background:rgba(255,255,255,.06);border:1px solid ${t.cor}44;color:${t.cor};border-radius:9px;font-size:10.5px;font-weight:600">${t.label}</span>`).join(' ')
+            : `<span style="color:var(--text3);font-style:italic;font-size:10.5px">sem detalhe</span>`;
+          return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--glass2);border-radius:8px;font-size:11.5px">
+            <span style="color:var(--text3);font-family:monospace;width:24px;text-align:right">${idx+1}.</span>
+            <strong style="color:var(--blue);min-width:32px">+${p.qtd||1}</strong>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;flex:1">${chipsHTML}</span>
+            <span style="color:var(--text3);white-space:nowrap">${h}</span>
+          </div>`;
+        };
+        return `
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Todos os registros (${presencas.length} cliques · ${totalPres} pessoas)</div>
+            ${semDemo > 0 ? `<div style="font-size:10.5px;color:var(--gold);font-weight:600">⚠ ${semDemo} registro${semDemo===1?'':'s'} (${semDemoQtd} pessoa${semDemoQtd===1?'':'s'}) sem detalhe demográfico</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;max-height:520px;overflow-y:auto;padding-right:4px">
+            ${todosOrdenados.map(linha).join('')}
+          </div>
+        </div>`;
+      })() : ''}
 
       <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--border);font-size:10px;color:var(--text3);text-align:center;letter-spacing:.06em">
         Terreiro do Candieiro · gerado em ${new Date().toLocaleString('pt-BR')}
