@@ -754,6 +754,8 @@ input[type="date"]{color-scheme:dark}
       <div class="pres-pills" data-group="genero">
         <button class="pres-pill" data-v="homem">👨 Homem</button>
         <button class="pres-pill" data-v="mulher">👩 Mulher</button>
+        <button class="pres-pill" data-v="trans">🏳️‍⚧️ Trans</button>
+        <button class="pres-pill" data-v="naobinarie">🟣 Não-binárie</button>
       </div>
     </div>
 
@@ -1691,7 +1693,7 @@ window.renderRelatorio = function() {
     if(p.etnia)  demo.etnia[p.etnia]   = (demo.etnia[p.etnia]||0) + q;
   });
   const labelDemo = {
-    homem:'Homens', mulher:'Mulheres',
+    homem:'Homens', mulher:'Mulheres', trans:'Pessoas trans', naobinarie:'Não-binárie',
     crianca:'Crianças', jovem:'Jovens', adulto:'Adultos', idoso:'Idosos',
     branca:'Brancas', parda:'Pardas', preta:'Pele negra', indigena:'Indígenas', amarela:'Pele amarela'
   };
@@ -1802,11 +1804,11 @@ window.renderRelatorio = function() {
         const semDemo = presencas.filter(p => !p.genero && !p.faixa && !p.etnia).length;
         const semDemoQtd = presencas.filter(p => !p.genero && !p.faixa && !p.etnia).reduce((s,p)=>s+(p.qtd||1),0);
         const labelTag = {
-          homem:'H', mulher:'M',
+          homem:'H', mulher:'M', trans:'Trans', naobinarie:'NB',
           crianca:'Criança', jovem:'Jovem', adulto:'Adulto', idoso:'Idoso',
           branca:'Branca', parda:'Parda', preta:'Pele negra', indigena:'Indígena', amarela:'Pele amarela'
         };
-        const corTag = { homem:'#3498db', mulher:'#e91e63', crianca:'#2ecc71', jovem:'#2ecc71', adulto:'#2ecc71', idoso:'#2ecc71', branca:'#d4a843', parda:'#d4a843', preta:'#d4a843', indigena:'#d4a843', amarela:'#d4a843' };
+        const corTag = { homem:'#3498db', mulher:'#e91e63', trans:'#f39c12', naobinarie:'#9b59b6', crianca:'#2ecc71', jovem:'#2ecc71', adulto:'#2ecc71', idoso:'#2ecc71', branca:'#d4a843', parda:'#d4a843', preta:'#d4a843', indigena:'#d4a843', amarela:'#d4a843' };
         const linha = (p, idx) => {
           const tsD = p.ts?.toDate ? p.ts.toDate() : new Date(p.ts);
           const h = tsD.toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
