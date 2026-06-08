@@ -90,6 +90,13 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .nav button:hover{background:var(--glass2);color:var(--text)}
 .nav button.active{background:linear-gradient(135deg,var(--red),var(--red2));color:white;font-weight:600;box-shadow:0 2px 12px rgba(230,51,41,0.28)}
 
+/* MODO LOJA — esconde nav, logout, sync/status pill. Apenas PDV de venda. */
+body.loja-mode .nav{display:none}
+body.loja-mode .btn-logout{display:none}
+body.loja-mode .sync-pill,
+body.loja-mode .status-pill{display:none}
+body.loja-mode .brand-sub::after{content:' · lojinha aberta';color:var(--gold);font-weight:600}
+
 /* PANELS */
 .panel{display:none;flex-direction:column;gap:16px;animation:fi .22s ease}
 .panel.active{display:flex}
@@ -1453,6 +1460,7 @@ window.confirmSale = async function() {
       total, custoTotal, method:S.pm,
       eventoId: S.eventoAtivo?.id || null,
       eventoNome: S.eventoAtivo?.nome || null,
+      origem: (typeof IS_LOJA_MODE !== 'undefined' && IS_LOJA_MODE) ? 'loja_externa' : 'pdv_interno',
       time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
       ts: serverTimestamp()
     });
@@ -2086,8 +2094,17 @@ window.addEventListener('offline',()=>{ document.getElementById('status-dot').cl
 window.addEventListener('online',()=>{ document.getElementById('status-dot').classList.remove('off'); document.getElementById('status-txt').textContent='online'; });
 } // end startListeners
 
+// ── MODO LOJA — acesso público sem login ─────────────────────────────────
+// Use ?modo=loja na URL. Pula login, esconde nav/sair, e marca toda venda
+// com origem='loja_externa' pra você distinguir no relatório/caixa.
+const IS_LOJA_MODE = (new URLSearchParams(location.search).get('modo') === 'loja');
+if (IS_LOJA_MODE) {
+  document.body.classList.add('loja-mode');
+  sessionStorage.setItem(SESSION_KEY, 'ok'); // pula auth nessa sessão
+}
+
 // Init
-if (checkSession()) { startListeners(); }
+if (IS_LOJA_MODE || checkSession()) { startListeners(); }
 else { showLoginScreen(); }
 
 </script>
