@@ -460,6 +460,7 @@ input[type="date"]{color-scheme:dark}
     <button class="active" onclick="showPanel('pdv',this)">PDV / Venda</button>
     <button onclick="showPanel('estoque',this)">Estoque</button>
     <button onclick="showPanel('caixa',this)">Fluxo de Caixa</button>
+    <button onclick="showPanel('repasses',this)">Repasses</button>
     <button onclick="showPanel('relatorio',this)">Relatório</button>
     <button onclick="showPanel('insights',this)">Insights</button>
     <button onclick="showPanel('cadastro',this)">Cadastrar</button>
@@ -588,6 +589,26 @@ input[type="date"]{color-scheme:dark}
     </div>
   </div>
 
+  <!-- REPASSES — quanto devemos pra cada filho consignante -->
+  <div id="panel-repasses" class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)">Repasses</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:3px">Quanto a casa deve aos filhos pelos produtos consignados.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Período:</label>
+        <input type="date" id="rep-de" onchange="renderRepasses()" style="padding:6px 10px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none"/>
+        <span style="color:var(--text3);font-size:13px">até</span>
+        <input type="date" id="rep-ate" onchange="renderRepasses()" style="padding:6px 10px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none"/>
+        <button onclick="setRepPeriodo('mes')" style="padding:6px 12px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Mês</button>
+        <button onclick="setRepPeriodo('tudo')" style="padding:6px 12px;background:var(--glass);border:1px solid var(--border2);border-radius:8px;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Tudo</button>
+      </div>
+    </div>
+    <div class="metrics-grid" id="rep-metrics"></div>
+    <div id="rep-list"><div class="empty-state" style="padding:60px 20px">Carregando...</div></div>
+  </div>
+
   <!-- INSIGHTS -->
   <div id="panel-insights" class="panel">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
@@ -648,6 +669,26 @@ input[type="date"]{color-scheme:dark}
         <div class="fg"><label>Qtd inicial em estoque</label><input id="f-qtd" type="number" min="0" placeholder="0"/></div>
         <div class="fg"></div>
       </div>
+
+      <!-- CONSIGNAÇÃO — produto feito por um filho da casa, com repasse fixo por unidade -->
+      <div class="fg" style="padding:14px;background:rgba(155,89,182,0.06);border:1px solid rgba(155,89,182,0.2);border-radius:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text)">
+          <input type="checkbox" id="f-consig-on" onchange="toggleConsig()" style="accent-color:#9b59b6;width:18px;height:18px"/>
+          🤝 Produto consignado de um filho
+        </label>
+        <div style="font-size:11.5px;color:var(--text3);margin-top:6px;line-height:1.45">Quando vendido, o terreiro repassa um valor fixo por unidade. A diferença entre venda e repasse fica pra casa.</div>
+        <div id="f-consig-box" style="display:none;margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="fg"><label>Filho responsável</label>
+            <select id="f-filho">
+              <option value="">— Selecione —</option>
+            </select>
+          </div>
+          <div class="fg"><label>Repasse por unidade (R$)</label>
+            <input id="f-repasse" type="number" step="0.01" min="0" placeholder="Ex: 8,00"/>
+          </div>
+        </div>
+      </div>
+
       <div id="bc-preview-wrap" style="display:none">
         <div class="divider"></div>
         <div class="bc-preview"><div class="pv-name" id="pv-name"></div><svg id="pv-svg"></svg><div class="pv-price" id="pv-price"></div></div>
@@ -929,7 +970,9 @@ const cartTotal = () => S.cart.reduce((s,i) => s + i.preco * i.qty, 0);
 const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null, ip:'hoje',
   eventos:[],         // todos os eventos (abertos + fechados) pro relatório
   eventoAtivo:null,   // doc do evento aberto atual (ou null)
-  editId:null         // id do produto sendo editado em Cadastro (null = criar novo)
+  editId:null,        // id do produto sendo editado em Cadastro (null = criar novo)
+  filhos:[],          // filhos da casa pra produtos consignados (read-only do admin)
+  repasses:[]         // histórico de pagamentos de repasse pra filhos
 };
 let hChart = null;
 
@@ -991,6 +1034,23 @@ onSnapshot(query(collection(db,'eventos_caixa'), orderBy('abertoEm','desc')), sn
   }
   if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
   scheduleAutoOpen(); // re-checa quando estado de eventos_caixa muda
+});
+
+// Filhos da casa (mesma collection do admin) — pra produtos consignados + repasses
+onSnapshot(query(collection(db,'fin_filhos'), orderBy('nome')), snap => {
+  S.filhos = snap.docs.map(d => ({ id:d.id, ...d.data() }))
+    .filter(f => !f.status || f.status === 'ativo');
+  if (document.getElementById('panel-cadastro').classList.contains('active')) renderConsigSelect();
+  if (document.getElementById('panel-repasses').classList.contains('active')) renderRepasses();
+});
+
+// Histórico de repasses pagos aos filhos consignantes
+onSnapshot(query(collection(db,'pdv_repasses'), orderBy('pagoEm','desc')), snap => {
+  S.repasses = snap.docs.map(d => {
+    const data = d.data();
+    return { id:d.id, ...data, pagoEm: data.pagoEm?.toDate ? data.pagoEm.toDate() : null };
+  });
+  if (document.getElementById('panel-repasses').classList.contains('active')) renderRepasses();
 });
 
 function renderEventBar() {
@@ -1257,6 +1317,8 @@ window.showPanel = function(id, btn) {
   if (id==='codigos') renderBcGrid();
   if (id==='insights') renderInsights();
   if (id==='relatorio') renderRelatorio();
+  if (id==='repasses') { initRepDate(); renderRepasses(); }
+  if (id==='cadastro') renderConsigSelect();
   if (id==='pdv') focusScan();
 };
 
@@ -1449,15 +1511,26 @@ window.confirmSale = async function() {
       return updateDoc(doc(db,'products',item.id), { estoque:(p.estoque-item.qty) });
     });
     await Promise.all(updates);
-    // Snapshot do custo no momento da venda (futuras edições de produto não alteram histórico)
+    // Snapshot do custo + consignação no momento da venda
+    // (futuras edições do produto não alteram o histórico de repasses devidos)
     const itemsWithCost = S.cart.map(i => {
       const p = S.products.find(x => x.id===i.id);
-      return { id:i.id, nome:i.nome, preco:i.preco, qty:i.qty, categoria:p?.categoria||'outros', precoCusto:Number(p?.precoCusto)||0 };
+      const filho_id = p?.filho_id || null;
+      const valor_repasse = filho_id ? (Number(p?.valor_repasse)||0) : 0;
+      return {
+        id:i.id, nome:i.nome, preco:i.preco, qty:i.qty,
+        categoria:p?.categoria||'outros',
+        precoCusto:Number(p?.precoCusto)||0,
+        filho_id,
+        filho_nome: filho_id ? (p?.filho_nome || null) : null,
+        valor_repasse
+      };
     });
     const custoTotal = itemsWithCost.reduce((s,i) => s + i.precoCusto * i.qty, 0);
+    const repasseTotal = itemsWithCost.reduce((s,i) => s + (i.valor_repasse * i.qty), 0);
     await addDoc(collection(db,'sales'), {
       items: itemsWithCost,
-      total, custoTotal, method:S.pm,
+      total, custoTotal, repasseTotal, method:S.pm,
       eventoId: S.eventoAtivo?.id || null,
       eventoNome: S.eventoAtivo?.nome || null,
       origem: (typeof IS_LOJA_MODE !== 'undefined' && IS_LOJA_MODE) ? 'loja_externa' : 'pdv_interno',
@@ -1885,6 +1958,140 @@ window.compartilharRelatorio = async function() {
   } catch(e) { console.error(e); toast('Erro ao gerar imagem','err'); }
 };
 
+// ── REPASSES ─────────────────────────────────────────────────────────────
+// Itera S.sales[].items[] pra agregar quanto a casa deve a cada filho
+// consignante. Subtrai os pagamentos já lançados em pdv_repasses.
+function initRepDate() {
+  const de = document.getElementById('rep-de');
+  const ate = document.getElementById('rep-ate');
+  if (!de || !ate) return;
+  if (!de.value || !ate.value) {
+    const h = new Date();
+    const primeiro = new Date(h.getFullYear(), h.getMonth(), 1);
+    const fmtD = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    de.value = fmtD(primeiro);
+    ate.value = fmtD(h);
+  }
+}
+window.setRepPeriodo = function(p) {
+  const de = document.getElementById('rep-de');
+  const ate = document.getElementById('rep-ate');
+  const h = new Date();
+  const fmtD = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  if (p === 'mes') { de.value = fmtD(new Date(h.getFullYear(), h.getMonth(), 1)); ate.value = fmtD(h); }
+  else if (p === 'tudo') { de.value = '2020-01-01'; ate.value = fmtD(h); }
+  renderRepasses();
+};
+function renderRepasses() {
+  const deStr = document.getElementById('rep-de')?.value;
+  const ateStr = document.getElementById('rep-ate')?.value;
+  if (!deStr || !ateStr) { initRepDate(); return renderRepasses(); }
+  const [dy,dm,dd] = deStr.split('-').map(Number);
+  const [ay,am,ad] = ateStr.split('-').map(Number);
+  const de = new Date(dy, dm-1, dd, 0, 0, 0, 0);
+  const ate = new Date(ay, am-1, ad, 23, 59, 59, 999);
+
+  // Agrega itens consignados no período por filho
+  const porFilho = {}; // {filho_id: {nome, qtd, devido, salesIds:Set}}
+  S.sales.forEach(s => {
+    if (s.ts < de || s.ts > ate) return;
+    (s.items||[]).forEach(it => {
+      if (!it.filho_id || (it.valor_repasse||0) <= 0) return;
+      if (!porFilho[it.filho_id]) porFilho[it.filho_id] = {
+        filho_id: it.filho_id,
+        filho_nome: it.filho_nome || (S.filhos.find(f=>f.id===it.filho_id)?.nome) || '?',
+        qtd: 0, devido: 0, salesIds: new Set(), porProduto: {}
+      };
+      const ent = porFilho[it.filho_id];
+      ent.qtd += it.qty || 0;
+      ent.devido += (it.valor_repasse||0) * (it.qty||0);
+      ent.salesIds.add(s.id);
+      if (!ent.porProduto[it.nome]) ent.porProduto[it.nome] = { qtd: 0, repasse: 0 };
+      ent.porProduto[it.nome].qtd += it.qty || 0;
+      ent.porProduto[it.nome].repasse += (it.valor_repasse||0) * (it.qty||0);
+    });
+  });
+
+  // Subtrai pagamentos já lançados pra cada filho (em qualquer data)
+  // Lógica: o admin paga "tudo que tem pendente até hoje" — usamos a soma total
+  // de pagamentos contra a soma total devida no período pra calcular pendente.
+  // Pra cenário real (admin clica "Marcar pago"), salvamos um repasse com filho_id+valor=pendente atual.
+  S.repasses.forEach(r => {
+    if (!porFilho[r.filho_id]) return; // pagamento de filho que não tem nada no período exibido
+    porFilho[r.filho_id].pago = (porFilho[r.filho_id].pago || 0) + (r.valor || 0);
+  });
+
+  const filhos = Object.values(porFilho).map(f => ({
+    ...f,
+    pago: f.pago || 0,
+    pendente: Math.max(0, (f.devido||0) - (f.pago||0))
+  })).sort((a,b) => b.pendente - a.pendente || b.devido - a.devido);
+
+  const totalDevido = filhos.reduce((s,f) => s + f.devido, 0);
+  const totalPago = filhos.reduce((s,f) => s + f.pago, 0);
+  const totalPendente = filhos.reduce((s,f) => s + f.pendente, 0);
+
+  document.getElementById('rep-metrics').innerHTML =
+    '<div class="metric"><div class="ml">Devido (período)</div><div class="mv">' + fmt(totalDevido) + '</div></div>' +
+    '<div class="metric green"><div class="ml">Já pago</div><div class="mv">' + fmt(totalPago) + '</div></div>' +
+    '<div class="metric ' + (totalPendente>0?'red':'green') + '"><div class="ml">Pendente</div><div class="mv">' + fmt(totalPendente) + '</div></div>' +
+    '<div class="metric blue"><div class="ml">Filhos com vendas</div><div class="mv">' + filhos.length + '</div></div>';
+
+  const listEl = document.getElementById('rep-list');
+  if (filhos.length === 0) {
+    listEl.innerHTML = '<div class="card"><div class="empty-state" style="padding:60px 20px">Nenhuma venda de produto consignado no período.<br/><br/><span style="font-size:12.5px;color:var(--text3)">Cadastra um produto em <strong>Cadastrar</strong> marcando "🤝 Produto consignado" pra vincular a um filho.</span></div></div>';
+    return;
+  }
+  listEl.innerHTML = filhos.map(f => {
+    const filhoObj = S.filhos.find(ff => ff.id === f.filho_id);
+    const tel = (filhoObj?.tel || '').replace(/\D/g,'');
+    const fmtBr = s => s.split('-').reverse().join('/');
+    const periodoTxt = deStr === ateStr ? fmtBr(deStr) : (fmtBr(deStr)+' a '+fmtBr(ateStr));
+    const waMsg = 'Oi ' + (f.filho_nome||'').split(' ')[0] + ', fechamento da lojinha (' + periodoTxt + '): ' + f.qtd + ' itens vendidos, repasse de ' + fmt(f.pendente) + '. Vou te enviar pelo PIX.';
+    const waLink = tel.length >= 10 ? 'https://wa.me/55' + tel + '?text=' + encodeURIComponent(waMsg) : null;
+    const produtosTxt = Object.entries(f.porProduto).map(([nome, p]) => p.qtd + '× ' + nome + ' (' + fmt(p.repasse) + ')').join(' · ');
+    return '<div class="card" style="padding:16px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:240px">' +
+          '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">' + f.filho_nome + '</div>' +
+          '<div style="font-size:12px;color:var(--text3);line-height:1.5">' + produtosTxt + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Pendente</div>' +
+          '<div style="font-size:22px;font-weight:800;color:' + (f.pendente>0?'#9b59b6':'var(--green)') + '">' + fmt(f.pendente) + '</div>' +
+          (f.pago>0 ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + fmt(f.pago) + ' já pago</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+        (waLink ? '<a href="' + waLink + '" target="_blank" rel="noopener" style="padding:10px 16px;background:#25d366;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px">💬 Avisar no WhatsApp</a>' : '') +
+        (f.pendente > 0 ? '<button onclick="abrirRepasseModal(\'' + f.filho_id + '\',' + f.pendente.toFixed(2) + ',\'' + (f.filho_nome||'').replace(/\'/g,'') + '\')" style="padding:10px 16px;background:#9b59b6;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--font)">✓ Marcar pago</button>' : '<span style="padding:10px 16px;background:rgba(46,204,113,.15);color:var(--green);border-radius:8px;font-weight:700;font-size:13px">✓ Tudo quitado</span>') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+window.abrirRepasseModal = function(filhoId, valor, nome) {
+  const v = prompt('Marcar pagamento de repasse pra ' + nome + '\n\nValor (R$):', valor.toFixed(2));
+  if (v === null) return;
+  const valorN = parseFloat((v||'').replace(',','.'));
+  if (isNaN(valorN) || valorN <= 0) { toast('Valor inválido','err'); return; }
+  const ref = prompt('Referência (opcional, ex: "PIX 15/06"):', '');
+  setSyncing(true);
+  addDoc(collection(db,'pdv_repasses'), {
+    filho_id: filhoId,
+    filho_nome: nome,
+    valor: valorN,
+    referencia: (ref||'').trim() || null,
+    pagoEm: serverTimestamp()
+  }).then(() => {
+    toast('✓ Repasse de ' + fmt(valorN) + ' pra ' + nome.split(' ')[0],'ok');
+    setSyncing(false);
+  }).catch(e => {
+    toast('Erro ao salvar repasse','err');
+    setSyncing(false);
+  });
+};
+
 function renderInsights() {
   const sales=getFS();
   const totalRev=sales.reduce((s,v)=>s+v.total,0);
@@ -1980,14 +2187,22 @@ window.saveProduct = async function() {
   // Conflito de código: só bloqueia se outro produto tiver esse código
   const conflito = S.products.find(x => x.codigo===codigo && x.id !== S.editId);
   if (conflito) { toast('Código já cadastrado em outro produto!','err'); return; }
+  // Consignação (opcional)
+  const consigOn = document.getElementById('f-consig-on').checked;
+  const filho_id = consigOn ? (document.getElementById('f-filho').value || null) : null;
+  const valor_repasse = consigOn ? (parseFloat(document.getElementById('f-repasse').value)||0) : 0;
+  if (consigOn && !filho_id) { toast('Selecione o filho responsável pelo consignado.','err'); return; }
+  if (consigOn && valor_repasse <= 0) { toast('Informe o valor de repasse por unidade.','err'); return; }
+  if (consigOn && valor_repasse >= preco) { toast('Repasse não pode ser maior ou igual ao preço de venda.','err'); return; }
+  const filho_nome = filho_id ? (S.filhos.find(f=>f.id===filho_id)?.nome || null) : null;
   setSyncing(true);
   try {
     if (S.editId) {
       // Edit mode: preserva ei (estoque inicial) e atualiza só os campos do form
-      await updateDoc(doc(db,'products',S.editId), { nome, codigo, preco, precoCusto, categoria, estoque, minimo });
+      await updateDoc(doc(db,'products',S.editId), { nome, codigo, preco, precoCusto, categoria, estoque, minimo, filho_id, filho_nome, valor_repasse });
       toast('Produto atualizado!','ok');
     } else {
-      await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo});
+      await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo,filho_id,filho_nome,valor_repasse});
       toast('Produto salvo com sucesso!','ok');
     }
     cancelEdit();
@@ -1995,14 +2210,33 @@ window.saveProduct = async function() {
   finally { setSyncing(false); }
 };
 
+// Helpers de consignação
+window.toggleConsig = function() {
+  const on = document.getElementById('f-consig-on').checked;
+  const box = document.getElementById('f-consig-box');
+  box.style.display = on ? 'grid' : 'none';
+  if (on) renderConsigSelect();
+};
+function renderConsigSelect() {
+  const sel = document.getElementById('f-filho');
+  if (!sel) return;
+  const currentVal = sel.value;
+  sel.innerHTML = '<option value="">— Selecione —</option>' +
+    S.filhos.map(f => '<option value="' + f.id + '">' + f.nome + '</option>').join('');
+  if (currentVal) sel.value = currentVal;
+}
+
 // Sai do modo edit e volta o form ao default de "novo produto"
 window.cancelEdit = function() {
   S.editId = null;
-  ['f-nome','f-codigo','f-preco','f-custo','f-qtd','f-min'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['f-nome','f-codigo','f-preco','f-custo','f-qtd','f-min','f-repasse'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   const catSel = document.getElementById('f-cat'); if (catSel) catSel.value = 'salgados';
   document.getElementById('bc-preview-wrap').style.display='none';
   const banner = document.getElementById('edit-banner'); if (banner) banner.style.display = 'none';
   const btn = document.querySelector('.btn-save'); if (btn) btn.textContent = 'Salvar produto';
+  const consigChk = document.getElementById('f-consig-on'); if (consigChk) consigChk.checked = false;
+  const consigBox = document.getElementById('f-consig-box'); if (consigBox) consigBox.style.display = 'none';
+  const filhoSel = document.getElementById('f-filho'); if (filhoSel) filhoSel.value = '';
 };
 
 // Abre o panel-cadastro e pré-preenche o form com o produto a editar
@@ -2021,6 +2255,17 @@ window.editProduct = function(id) {
   document.getElementById('f-cat').value = p.categoria||'outros';
   document.getElementById('f-qtd').value = p.estoque||0;
   document.getElementById('f-min').value = p.minimo||5;
+  // Consignação
+  const consigChk = document.getElementById('f-consig-on');
+  if (consigChk) {
+    consigChk.checked = !!p.filho_id;
+    document.getElementById('f-consig-box').style.display = p.filho_id ? 'grid' : 'none';
+    renderConsigSelect();
+    if (p.filho_id) {
+      const filhoSel = document.getElementById('f-filho'); if (filhoSel) filhoSel.value = p.filho_id;
+      const repInp = document.getElementById('f-repasse'); if (repInp) repInp.value = p.valor_repasse||'';
+    }
+  }
   // Banner de aviso
   const banner = document.getElementById('edit-banner');
   if (banner) { banner.style.display = 'flex'; banner.querySelector('span').textContent = 'Editando: ' + p.nome; }
