@@ -416,15 +416,15 @@ input[type="date"]{color-scheme:dark}
     </div>
     <div class="login-fields">
       <div class="login-field">
-        <label>Usuário</label>
-        <input id="login-user" type="text" placeholder="usuário" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()"/>
+        <label>Email</label>
+        <input id="login-user" type="email" placeholder="seu@email.com" inputmode="email" autocapitalize="off" spellcheck="false" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()"/>
       </div>
       <div class="login-field">
         <label>Senha</label>
         <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
       </div>
     </div>
-    <div class="login-err" id="login-err">Usuário ou senha incorretos</div>
+    <div class="login-err" id="login-err">Email ou senha incorretos</div>
     <button class="btn-login" onclick="doLogin()">Entrar</button>
   </div>
 </div>
@@ -873,6 +873,9 @@ import {
   getFirestore, collection, doc, onSnapshot,
   addDoc, updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp, arrayUnion
 } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/firestore/+esm";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/auth/+esm";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCVGBtxNCj4iE3OsBY4KD_eYlYXL3SGgs4",
@@ -897,44 +900,52 @@ const db = getFirestore(app);
 const dbCand = getFirestore(initializeApp(cfgCand, 'cand'));
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
-const CREDENTIALS = [
-  { user: 'pai', pass: 'candieiro2025' },
-  { user: 'loja', pass: 'pdv2025' }
-];
-const SESSION_KEY = 'pdv_auth';
-
-function checkSession() { return sessionStorage.getItem(SESSION_KEY) === 'ok'; }
+// Firebase Auth de verdade, mesmos usuários do admin.
+//
+// Antes era um array CREDENTIALS no próprio JS, e o PDV nunca autenticava no
+// Firebase. Funcionou enquanto as rules eram abertas; no dia em que passaram a
+// exigir `request.auth != null`, o PDV parou de gravar venda — 403 em `sales`,
+// `products`, `eventos_caixa` e `pdv_repasses`. Login decorativo não vira
+// permissão.
+//
+// A sessão do Firebase persiste no aparelho (localStorage), então o tablet da
+// loja loga uma vez e continua logado — inclusive depois de fechar a aba, o que
+// o sessionStorage anterior não fazia.
+const auth = getAuth(app);
 
 function showLoginScreen() {
+  document.getElementById('loading').style.display = 'none';
   document.getElementById('login-screen').classList.add('show');
   setTimeout(() => document.getElementById('login-user').focus(), 100);
 }
 function hideLoginScreen() { document.getElementById('login-screen').classList.remove('show'); }
 
 window.doLogin = function() {
-  const user = document.getElementById('login-user').value.trim().toLowerCase();
+  const email = document.getElementById('login-user').value.trim();
   const pass = document.getElementById('login-pass').value;
   const err = document.getElementById('login-err');
-  const valid = CREDENTIALS.find(cr => cr.user === user && cr.pass === pass);
-  if (valid) {
-    sessionStorage.setItem(SESSION_KEY, 'ok');
-    err.style.display = 'none';
-    hideLoginScreen();
-    startListeners();
-  } else {
-    err.style.display = 'block';
-    document.getElementById('login-pass').value = '';
-    document.getElementById('login-pass').focus();
-  }
+  const btn = document.querySelector('.btn-login');
+  if (!email || !pass) return;
+
+  err.style.display = 'none';
+  if (btn) { btn.disabled = true; btn.textContent = 'Entrando...'; }
+
+  signInWithEmailAndPassword(auth, email, pass)
+    .then(() => { hideLoginScreen(); }) // onAuthStateChanged sobe os listeners
+    .catch(e => {
+      console.warn('login falhou:', e?.code || e);
+      err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e?.code || '')
+        ? 'Email ou senha incorretos'
+        : 'Não foi possível entrar. Tenta de novo.';
+      err.style.display = 'block';
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-pass').focus();
+      if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+    });
 };
 
 window.doLogout = function() {
-  sessionStorage.removeItem(SESSION_KEY);
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pass').value = '';
-  showLoginScreen();
+  signOut(auth).then(() => location.reload());
 };
 
 function startListeners() {
@@ -2339,18 +2350,28 @@ window.addEventListener('offline',()=>{ document.getElementById('status-dot').cl
 window.addEventListener('online',()=>{ document.getElementById('status-dot').classList.remove('off'); document.getElementById('status-txt').textContent='online'; });
 } // end startListeners
 
-// ── MODO LOJA — acesso público sem login ─────────────────────────────────
-// Use ?modo=loja na URL. Pula login, esconde nav/sair, e marca toda venda
-// com origem='loja_externa' pra você distinguir no relatório/caixa.
+// ── MODO LOJA ─────────────────────────────────────────────────────────────
+// Use ?modo=loja na URL: esconde nav/sair e marca toda venda com
+// origem='loja_externa' pra distinguir no relatório/caixa.
+//
+// Ele NÃO pula mais o login, e não é regressão de UX: pular era o que deixava a
+// tela abrir sem `request.auth`, e aí toda venda batia em permission-denied. A
+// intenção — quem opera a loja não precisa saber senha — continua valendo por
+// outro caminho: alguém loga UMA vez no tablet e a sessão do Firebase fica no
+// aparelho. Só reaparece login se alguém sair ou limpar os dados do navegador.
 const IS_LOJA_MODE = (new URLSearchParams(location.search).get('modo') === 'loja');
-if (IS_LOJA_MODE) {
-  document.body.classList.add('loja-mode');
-  sessionStorage.setItem(SESSION_KEY, 'ok'); // pula auth nessa sessão
-}
+if (IS_LOJA_MODE) document.body.classList.add('loja-mode');
 
-// Init
-if (IS_LOJA_MODE || checkSession()) { startListeners(); }
-else { showLoginScreen(); }
+// Init: quem decide é o estado da autenticação, não sessionStorage.
+let listenersNoAr = false;
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    hideLoginScreen();
+    if (!listenersNoAr) { listenersNoAr = true; startListeners(); }
+  } else if (!listenersNoAr) {
+    showLoginScreen();
+  }
+});
 
 </script>
 </body>
