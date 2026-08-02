@@ -936,7 +936,9 @@ const cfgCand = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const dbCand = getFirestore(initializeApp(cfgCand, 'cand'));
+const appCand = initializeApp(cfgCand, 'cand');
+const dbCand = getFirestore(appCand);
+const authCand = getAuth(appCand);
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 // Firebase Auth de verdade, mesmos usuários do admin.
@@ -970,7 +972,26 @@ window.doLogin = function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Entrando...'; }
 
   signInWithEmailAndPassword(auth, email, pass)
-    .then(() => { hideLoginScreen(); }) // onAuthStateChanged sobe os listeners
+    .then(async () => {
+      // O PDV lê a agenda do terreiro-candieiro pra abrir o caixa sozinho no
+      // dia da gira. Firebase Auth é POR PROJETO: entrar no terreiro-pvd não
+      // vale lá. Enquanto `eventos` era leitura pública isso passou
+      // despercebido; quando a listagem fechou (01/08, pra tirar os trabalhos
+      // internos do ar), o PDV perdeu a agenda e passou a mostrar erro.
+      //
+      // O admin já fazia esse login duplo. Aqui faltava.
+      //
+      // Falhar aqui não bloqueia a venda: sem a agenda, o auto-open não
+      // acontece e o "Iniciar evento" na mão continua. É por isso que o catch
+      // avisa em vez de derrubar.
+      try {
+        await signInWithEmailAndPassword(authCand, email, pass);
+      } catch (eCand) {
+        console.warn('sem acesso ao terreiro-candieiro:', eCand?.code, eCand?.message);
+        setTimeout(() => toast('Sem acesso à agenda do site. O caixa não abre sozinho no dia da gira; use Iniciar evento.', 'err'), 900);
+      }
+      hideLoginScreen();
+    }) // onAuthStateChanged sobe os listeners
     .catch(e => {
       console.warn('login falhou:', e?.code || e);
       err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e?.code || '')
@@ -984,7 +1005,7 @@ window.doLogin = function() {
 };
 
 window.doLogout = function() {
-  signOut(auth).then(() => location.reload());
+  Promise.all([signOut(auth), signOut(authCand).catch(()=>{})]).then(() => location.reload());
 };
 
 function startListeners() {
