@@ -1250,55 +1250,21 @@ function scheduleAutoOpen() {
   setTimeout(() => { _autoOpenScheduled = false; autoOpenEventoHoje(); }, 500);
 }
 
-async function autoOpenEventoHoje() {
-  if (!Array.isArray(S.eventos) || !Array.isArray(S.eventosSite)) return;
-  const hojeISO = new Date().toISOString().slice(0,10);
+// O caixa é aberto e fechado pelo CRON DO WORKER, de 15 em 15 minutos.
+//
+// Isto aqui fazia o mesmo trabalho, e só funcionava com o tablet ligado e a
+// página aberta. Tablet desligado, caixa não abria — e a venda da noite ia
+// pra um caixa aberto às pressas ou pra nenhum.
+//
+// Dois donos da mesma decisão é pior que um dono ruim: os dois criavam,
+// os dois fechavam, e o anti-duplicata de cada um só conhecia a si mesmo.
+// Agora o Worker decide e esta tela só mostra.
+//
+// O que continua aqui: o "Iniciar evento" na mão. Caixa aberto na mão o Worker
+// NÃO fecha sozinho — se alguém abriu por um motivo que o sistema não conhece,
+// não é o sistema que decide que acabou.
+function autoOpenEventoHoje() { /* agora é do cron do Worker */ }
 
-  // 1. Fecha eventos abertos AUTOMATICAMENTE cuja data já passou (não mexe nos manuais)
-  const stale = S.eventos.filter(e =>
-    e.status === 'aberto' && e.abertoAuto && e.data && e.data < hojeISO
-  );
-  for (const s of stale) {
-    try {
-      await updateDoc(doc(db,'eventos_caixa', s.id), {
-        status: 'fechado',
-        fechadoEm: serverTimestamp(),
-        fechadoAuto: true
-      });
-    } catch (err) { console.warn('fail close stale', err); }
-  }
-
-  // 2. Já existe algum aberto? Não cria outro (manual + auto não convivem)
-  const algumAberto = S.eventos.some(e => e.status === 'aberto');
-  if (algumAberto) return;
-
-  // 3. Tem evento na agenda do site pra hoje?
-  const eventosHoje = S.eventosSite
-    .filter(e => e.data === hojeISO)
-    .sort((a,b) => (a.hora||'').localeCompare(b.hora||''));
-  if (eventosHoje.length === 0) return;
-  const evHoje = eventosHoje[0];
-
-  // 4. Anti-dupe: já criamos pra esse siteEventoId hoje? (mesmo fechado, não recria)
-  const existente = S.eventos.find(e =>
-    e.siteEventoId === evHoje.id && e.data === hojeISO
-  );
-  if (existente) return;
-
-  try {
-    await addDoc(collection(db,'eventos_caixa'), {
-      nome: evHoje.nome || evHoje.titulo || 'Evento',
-      siteEventoId: evHoje.id,
-      data: hojeISO,
-      status: 'aberto',
-      abertoEm: serverTimestamp(),
-      fechadoEm: null,
-      presencas: [],
-      abertoAuto: true
-    });
-    toast('Evento "' + (evHoje.nome||'Evento') + '" aberto automaticamente','ok');
-  } catch (e) { console.warn('fail auto-open', e); }
-}
 
 function _eventoSiteLabel(e) {
   if (!e) return '';
