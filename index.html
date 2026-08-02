@@ -479,9 +479,7 @@ input[type="date"]{color-scheme:dark}
           <div class="ev-meta" id="ev-meta"></div>
         </div>
       </div>
-      <div class="event-bar-acts" id="event-bar-acts">
-        <button class="ev-btn ev-btn-primary" onclick="abrirEventoPrompt()">Iniciar evento</button>
-      </div>
+      <div class="event-bar-acts" id="event-bar-acts"></div>
     </div>
 
     <div class="scan-row">
@@ -835,23 +833,7 @@ input[type="date"]{color-scheme:dark}
   </div>
 </div>
 
-<!-- MODAL PICKER DE EVENTO — escolhe da agenda do site ou nome livre -->
-<div class="modal-overlay" id="modal-ev-pick" onclick="if(event.target===this)closeEvPick()">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-title">Iniciar evento no caixa</div>
-    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">Toda venda e presente serão associados a esse evento.</div>
-    <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Próximos eventos agendados</div>
-    <div id="ev-pick-list" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;margin-bottom:14px;padding-right:4px"></div>
-    <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;padding-top:6px;border-top:1px dashed var(--border)">Outro evento (digite um nome)</div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <input class="fi" id="ev-pick-custom" type="text" placeholder="Ex: Festa do Dendê" style="flex:1;padding:10px 12px;background:var(--glass);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:14px;font-family:var(--font);outline:none"/>
-      <button class="ev-btn ev-btn-primary" onclick="iniciarEventoCustom()" style="padding:10px 16px">Iniciar</button>
-    </div>
-    <div class="modal-row">
-      <button class="mbtn-cancel" onclick="closeEvPick()">Cancelar</button>
-    </div>
-  </div>
-</div>
+<!-- O picker de evento saiu em 02/08: o caixa abre e fecha pelo cron. -->
 
 <!-- MODAL EXCLUIR -->
 <div class="modal-overlay" id="modal-del">
@@ -1100,10 +1082,15 @@ function renderEventBar() {
   const ev = S.eventoAtivo;
   if (!ev) {
     bar.classList.add('empty');
-    document.getElementById('ev-name').textContent = 'Sem evento ativo';
-    document.getElementById('ev-meta').textContent = '';
-    document.getElementById('event-bar-acts').innerHTML =
-      '<button class="ev-btn ev-btn-primary" onclick="abrirEventoPrompt()">Iniciar evento</button>';
+    // Sem botão de abrir. O caixa é do cron desde 02/08, e um botão aqui
+    // criaria um segundo dono da mesma decisão — foi o que já tínhamos, e os
+    // dois anti-duplicata só conheciam a si mesmos.
+    //
+    // A venda NÃO depende disto: ela grava com `eventoId: null` e entra no
+    // caixa geral. O que fica sem caixa é a contagem de presença.
+    document.getElementById('ev-name').textContent = 'Sem evento hoje';
+    document.getElementById('ev-meta').textContent = 'Abre sozinho no dia da gira. Pode vender assim mesmo.';
+    document.getElementById('event-bar-acts').innerHTML = '';
     return;
   }
   bar.classList.remove('empty');
@@ -1273,48 +1260,18 @@ function _eventoSiteLabel(e) {
   return (e.nome||e.titulo||'Evento') + ' · ' + dt + hora;
 }
 
-// Substitui o prompt() por modal com lista de eventos do site + opção manual.
-window.abrirEventoPrompt = function() {
-  const proximos = (S.eventosSite||[]).slice(0,15);
-  const lista = proximos.length === 0
-    ? '<div class="empty-state" style="padding:18px;font-size:13px">Nenhum evento agendado no site. Use "Outro evento" abaixo.</div>'
-    : proximos.map(e => `
-        <button class="ev-pick-item" onclick="iniciarEventoDoSite('${e.id}', ${JSON.stringify(e.nome||e.titulo||'Evento').replace(/'/g,'&#39;').replace(/"/g,'&quot;')})">
-          <div class="ev-pick-name">${e.nome||e.titulo||'Evento'}</div>
-          <div class="ev-pick-meta">${e.data ? new Date(e.data+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}) : '?'}${e.hora?' · '+e.hora:''}${e.local?' · '+e.local:''}</div>
-        </button>`).join('');
-  document.getElementById('ev-pick-list').innerHTML = lista;
-  document.getElementById('ev-pick-custom').value = '';
-  document.getElementById('modal-ev-pick').classList.add('show');
-};
-window.closeEvPick = function() {
-  document.getElementById('modal-ev-pick').classList.remove('show');
-};
-window.iniciarEventoDoSite = async function(siteEventoId, nome) {
-  await _abrirEventoNoCaixa(nome, siteEventoId);
-  closeEvPick();
-};
-window.iniciarEventoCustom = async function() {
-  const nome = document.getElementById('ev-pick-custom').value.trim();
-  if (!nome) { toast('Digite um nome ou escolha da lista','err'); return; }
-  await _abrirEventoNoCaixa(nome, null);
-  closeEvPick();
-};
-async function _abrirEventoNoCaixa(nome, siteEventoId) {
-  setSyncing(true);
-  try {
-    await addDoc(collection(db,'eventos_caixa'), {
-      nome: (nome||'').trim() || 'Evento',
-      siteEventoId: siteEventoId || null,
-      status: 'aberto',
-      abertoEm: serverTimestamp(),
-      fechadoEm: null,
-      presencas: []
-    });
-    toast('Evento "' + nome + '" iniciado.','ok');
-  } catch(e) { toast('Erro ao abrir evento','err'); }
-  finally { setSyncing(false); }
-}
+// O caixa é aberto e fechado pelo cron do Worker desde 02/08. O picker manual
+// saiu junto com o auto-open daqui: dois donos da mesma decisão foi o que já
+// tínhamos, e cada anti-duplicata só conhecia a si mesmo.
+//
+// O QUE ISSO CUSTA, e vale estar escrito: se o cron não rodar numa noite de
+// gira, ninguém consegue abrir caixa por aqui. A venda continua funcionando —
+// grava com `eventoId: null` e cai no caixa geral — mas fica sem ser atribuída
+// à gira, e a contagem de presença não pode ser registrada.
+//
+// Pra destravar sem tocar em código: cadastrar o evento na agenda do admin. O
+// cron abre na batida seguinte, em até 15 minutos.
+
 
 window.editarNomeEvento = async function() {
   const ev = S.eventoAtivo; if (!ev) return;
