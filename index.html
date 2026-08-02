@@ -924,21 +924,10 @@ const firebaseConfig = {
   messagingSenderId: "365180068240",
   appId: "1:365180068240:web:7b2fe25ca670781f585315"
 };
-// Segundo Firebase: terreiro-candieiro (CMS do site) — pra puxar os eventos
-// agendados (giras, festas, apresentações culturais) e usar como sugestão
-// no picker de "Iniciar evento" do PDV.
-const cfgCand = {
-  apiKey: "AIzaSyAViFU3bdl8RKSHBuxMGAc97SPITd1aJWM",
-  authDomain: "terreiro-candieiro.firebaseapp.com",
-  projectId: "terreiro-candieiro",
-  appId: "1:100068133826:web:aa6bea82298a266737a45b"
-};
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const appCand = initializeApp(cfgCand, 'cand');
-const dbCand = getFirestore(appCand);
-const authCand = getAuth(appCand);
+// Nenhum app do Firebase pro projeto do site: a agenda vem pelo Worker.
+// Ver carregarAgendaDoSite() logo abaixo.
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 // Firebase Auth de verdade, mesmos usuários do admin.
@@ -972,26 +961,7 @@ window.doLogin = function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Entrando...'; }
 
   signInWithEmailAndPassword(auth, email, pass)
-    .then(async () => {
-      // O PDV lê a agenda do terreiro-candieiro pra abrir o caixa sozinho no
-      // dia da gira. Firebase Auth é POR PROJETO: entrar no terreiro-pvd não
-      // vale lá. Enquanto `eventos` era leitura pública isso passou
-      // despercebido; quando a listagem fechou (01/08, pra tirar os trabalhos
-      // internos do ar), o PDV perdeu a agenda e passou a mostrar erro.
-      //
-      // O admin já fazia esse login duplo. Aqui faltava.
-      //
-      // Falhar aqui não bloqueia a venda: sem a agenda, o auto-open não
-      // acontece e o "Iniciar evento" na mão continua. É por isso que o catch
-      // avisa em vez de derrubar.
-      try {
-        await signInWithEmailAndPassword(authCand, email, pass);
-      } catch (eCand) {
-        console.warn('sem acesso ao terreiro-candieiro:', eCand?.code, eCand?.message);
-        setTimeout(() => toast('Sem acesso à agenda do site. O caixa não abre sozinho no dia da gira; use Iniciar evento.', 'err'), 900);
-      }
-      hideLoginScreen();
-    }) // onAuthStateChanged sobe os listeners
+    .then(() => { hideLoginScreen(); }) // onAuthStateChanged sobe os listeners
     .catch(e => {
       console.warn('login falhou:', e?.code || e);
       err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e?.code || '')
@@ -1005,7 +975,7 @@ window.doLogin = function() {
 };
 
 window.doLogout = function() {
-  Promise.all([signOut(auth), signOut(authCand).catch(()=>{})]).then(() => location.reload());
+  signOut(auth).then(() => location.reload());
 };
 
 function startListeners() {
@@ -1229,15 +1199,47 @@ window.confirmarPresenca = async function() {
   finally { setSyncing(false); }
 };
 
-// Eventos agendados pelo admin do site (terreiro-candieiro). Atualiza em tempo real.
+// ── A AGENDA DO SITE, PELO WORKER ────────────────────────────────────────
+//
+// Serve pra uma coisa só: abrir o caixa sozinho no dia da gira.
+//
+// Era leitura direta do `terreiro-candieiro`, e funcionava porque `eventos` era
+// público. Em 01/08 a listagem fechou pra tirar os trabalhos internos do ar, e
+// o PDV perdeu a agenda.
+//
+// A saída óbvia seria autenticar aqui também, como o admin faz. NÃO fiz: as
+// rules daquele projeto liberam tudo pra quem tem login, então dar conta ao
+// tablet da lojinha seria dar a ele escrita no CMS do site. Tablet que fica em
+// cima de um balcão não precisa poder editar o site.
+//
+// Então vem pelo Worker, sem credencial nenhuma, e vem só o que é público —
+// gira aberta, festa, apresentação. É exatamente quando a lojinha abre. Se um
+// dia rolar lojinha em trabalho interno, o auto-open não pega e o "Iniciar
+// evento" na mão resolve.
 S.eventosSite = [];
-onSnapshot(query(collection(dbCand,'eventos'), orderBy('data','asc')), snap => {
-  const hojeISO = new Date().toISOString().slice(0,10);
-  S.eventosSite = snap.docs
-    .map(d => ({ id:d.id, ...d.data() }))
-    .filter(e => !e.arquivado && (e.data||'') >= hojeISO);
-  scheduleAutoOpen(); // re-checa quando agenda do site muda
-});
+const AGENDA_URL = 'https://terreiro-email.hunter-soares-c.workers.dev/agenda';
+
+async function carregarAgendaDoSite() {
+  try {
+    const resp = await fetch(AGENDA_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const { eventos } = await resp.json();
+    const hojeISO = new Date().toISOString().slice(0,10);
+    S.eventosSite = (eventos || []).filter(e => (e.data || '') >= hojeISO);
+    scheduleAutoOpen();
+  } catch (e) {
+    // Não grita: o auto-open é conveniência, e o "Iniciar evento" na mão está
+    // ali do lado. Gritar aqui treinaria a pessoa do balcão a ignorar faixa
+    // vermelha, e ela precisa acreditar na faixa quando for venda.
+    console.warn('agenda do site indisponível', e);
+  }
+}
+carregarAgendaDoSite();
+// O admin pode marcar uma gira durante o dia. Meia hora é folga de sobra pra
+// uma agenda que muda uma vez por semestre, e não faz o tablet conversar à toa.
+setInterval(carregarAgendaDoSite, 30 * 60 * 1000);
 
 // ── AUTO-OPEN: se o terreiro tem evento HOJE na agenda do site, abre auto.
 // O evento ativo do PDV vai de 00:00 a 23:59 do dia da gira. Fora disso, fecha.
