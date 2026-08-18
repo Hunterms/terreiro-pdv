@@ -653,12 +653,13 @@ input[type="date"]{color-scheme:dark}
       </div>
       <div class="form-grid">
         <div class="fg"><label>Categoria</label>
-          <select id="f-cat">
+          <select id="f-cat" onchange="toggleCombo()">
             <option value="salgados">🥟 Salgados</option>
             <option value="doceria">🍬 Doceria</option>
             <option value="bebidas">🥤 Bebidas</option>
             <option value="religioso">🪔 Artigos religiosos</option>
             <option value="outros">📦 Outros</option>
+            <option value="combo">🎁 Combo (junta itens do estoque)</option>
           </select>
         </div>
         <div class="fg"><label>Alerta mínimo (qtd)</label><input id="f-min" type="number" min="0" placeholder="5"/></div>
@@ -669,7 +670,7 @@ input[type="date"]{color-scheme:dark}
       </div>
 
       <!-- CONSIGNAÇÃO — produto feito por um filho da casa, com repasse fixo por unidade -->
-      <div class="fg" style="padding:14px;background:rgba(155,89,182,0.06);border:1px solid rgba(155,89,182,0.2);border-radius:10px">
+      <div id="f-consig-wrap" class="fg" style="padding:14px;background:rgba(155,89,182,0.06);border:1px solid rgba(155,89,182,0.2);border-radius:10px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text)">
           <input type="checkbox" id="f-consig-on" onchange="toggleConsig()" style="accent-color:#9b59b6;width:18px;height:18px"/>
           🤝 Produto consignado de um filho
@@ -685,6 +686,21 @@ input[type="date"]{color-scheme:dark}
             <input id="f-repasse" type="number" step="0.01" min="0" placeholder="Ex: 8,00"/>
           </div>
         </div>
+      </div>
+
+      <!-- COMBO — junta itens do estoque num preço só. O combo não guarda
+           estoque: quem baixa é o item de dentro. -->
+      <div id="f-combo-box" class="fg" style="display:none;padding:14px;background:rgba(212,168,67,0.06);border:1px solid rgba(212,168,67,0.25);border-radius:10px">
+        <label style="font-size:14px;font-weight:600;color:var(--text)">🎁 Itens dentro do combo</label>
+        <div style="font-size:11.5px;color:var(--text3);margin-top:6px;line-height:1.45">O combo não tem estoque próprio. Quantos dá pra vender sai do item mais escasso, e cada venda baixa os itens de dentro. O preço acima é livre.</div>
+        <div style="display:grid;grid-template-columns:1fr 90px auto;gap:10px;margin-top:12px;align-items:end">
+          <div class="fg"><label>Item do estoque</label>
+            <select id="f-combo-prod"><option value="">— Selecione —</option></select>
+          </div>
+          <div class="fg"><label>Qtd</label><input id="f-combo-qty" type="number" min="1" step="1" value="1"/></div>
+          <button onclick="addComboItem()" style="padding:11px 18px;background:linear-gradient(135deg,var(--gold),var(--gold2));border:none;border-radius:9px;color:#1a1209;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">Adicionar</button>
+        </div>
+        <div id="f-combo-list" style="margin-top:14px"></div>
       </div>
 
       <div id="bc-preview-wrap" style="display:none">
@@ -977,16 +993,16 @@ const loadTimeout = setTimeout(() => {
 // não aparecem no dropdown de cadastro mas continuam renderizando se algum produto velho tiver.
 const catLabel = {
   salgados:'Salgados', doceria:'Doceria', bebidas:'Bebidas',
-  religioso:'Art. religioso', outros:'Outros',
+  religioso:'Art. religioso', outros:'Outros', combo:'Combos',
   // Legados:
   doces:'Doceria', cantina:'Outros', guias:'Art. religioso', velas:'Art. religioso', defumacao:'Art. religioso'
 };
 const catIcon = {
   salgados:'🥟', doceria:'🍬', bebidas:'🥤',
-  religioso:'🪔', outros:'📦',
+  religioso:'🪔', outros:'📦', combo:'🎁',
   doces:'🍬', cantina:'📦', guias:'📿', velas:'🕯️', defumacao:'🌿'
 };
-const catOrder = ['salgados','doceria','bebidas','religioso','outros'];
+const catOrder = ['combo','salgados','doceria','bebidas','religioso','outros'];
 const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 const cartTotal = () => S.cart.reduce((s,i) => s + i.preco * i.qty, 0);
 
@@ -995,9 +1011,63 @@ const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null
   eventoAtivo:null,   // doc do evento aberto atual (ou null)
   editId:null,        // id do produto sendo editado em Cadastro (null = criar novo)
   filhos:[],          // filhos da casa pra produtos consignados (read-only do admin)
-  repasses:[]         // histórico de pagamentos de repasse pra filhos
+  repasses:[],        // histórico de pagamentos de repasse pra filhos
+  comboItens:[]       // itens do combo sendo montado no form de Cadastro
 };
 let hChart = null;
+
+// ── COMBOS ───────────────────────────────────────────────────────
+// Combo é um produto como qualquer outro (mesma collection, mesmo código de
+// barras, mesmo botão na tela de venda) — com um campo a mais:
+//
+//   p.combo = [{id, qty}]   itens do estoque que ele carrega dentro
+//
+// Ele não tem estoque próprio. Quanto dá pra vender sai do item mais escasso,
+// e a venda baixa cada item de dentro. Assim o preço do combo é livre e o
+// inventário continua sendo um só: não existe "estoque do combo" pra divergir.
+const itensDe = p => (p && Array.isArray(p.combo) && p.combo.length) ? p.combo : null;
+
+// Quanto de cada produto o carrinho já compromete. Um mesmo item pode aparecer
+// avulso E dentro de dois combos — aqui vira uma soma só.
+function consumoCarrinho() {
+  const m = {};
+  S.cart.forEach(i => {
+    const p = S.products.find(x => x.id === i.id); if (!p) return;
+    const ci = itensDe(p);
+    if (ci) ci.forEach(c => { m[c.id] = (m[c.id]||0) + (c.qty||1) * i.qty; });
+    else m[p.id] = (m[p.id]||0) + i.qty;
+  });
+  return m;
+}
+
+// Estoque que o produto mostra: o dele, ou quantos combos dá pra montar
+function estoqueDe(p) {
+  const ci = itensDe(p); if (!ci) return p.estoque||0;
+  return Math.min.apply(null, ci.map(c => {
+    const comp = S.products.find(x => x.id === c.id);
+    return comp ? Math.floor((comp.estoque||0) / (c.qty||1)) : 0;
+  }));
+}
+
+// Custo: o dele, ou a soma do que tem dentro
+function custoDe(p) {
+  const ci = itensDe(p); if (!ci) return Number(p.precoCusto)||0;
+  return ci.reduce((t,c) => {
+    const comp = S.products.find(x => x.id === c.id);
+    return t + (Number(comp && comp.precoCusto)||0) * (c.qty||1);
+  }, 0);
+}
+
+// Cabe mais n unidades no carrinho sem furar o estoque de ninguém?
+function cabeNoCarrinho(p, n) {
+  const uso = consumoCarrinho();
+  const precisa = itensDe(p) || [{ id:p.id, qty:1 }];
+  return precisa.every(c => {
+    const comp = S.products.find(x => x.id === c.id);
+    return !!comp && (comp.estoque||0) - (uso[c.id]||0) >= (c.qty||1) * n;
+  });
+}
+// ── FIM COMBOS ──────────────────────────────────────────────────
 
 function setSyncing(on) {
   const dot = document.getElementById('sync-dot');
@@ -1338,7 +1408,7 @@ document.addEventListener('keydown', function(e) {
 function renderQuick() {
   const el = document.getElementById('quick-btns');
   if (!S.products.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Nenhum produto cadastrado ainda.</div>'; return; }
-  const disponiveis = S.products.filter(p => (p.estoque||0) > 0);
+  const disponiveis = S.products.filter(p => estoqueDe(p) > 0);
   if (!disponiveis.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Todos os itens estão zerados. Reponha no Estoque.</div>'; return; }
 
   // Agrupa por categoria (mantém ordem do catOrder + extras no fim)
@@ -1365,7 +1435,7 @@ function _primeiraLetra(nome) {
 }
 
 window.openCat = function(cat) {
-  const itens = S.products.filter(p => (p.categoria||'outros') === cat && (p.estoque||0) > 0)
+  const itens = S.products.filter(p => (p.categoria||'outros') === cat && estoqueDe(p) > 0)
     .sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
   document.getElementById('cm-icon').textContent = catIcon[cat]||'📦';
   document.getElementById('cm-title').textContent = (catLabel[cat]||cat) + ' · ' + itens.length + ' ' + (itens.length===1?'item':'itens');
@@ -1388,8 +1458,11 @@ window.openCat = function(cat) {
           ${porLetra[l].map(p =>
             '<button class="cat-modal-item" onclick="addFromCat(\'' + p.id + '\')">' +
               '<div class="ci-nome">' + p.nome + '</div>' +
+              // Combo: quem está no caixa precisa saber o que vai na sacola
+              (itensDe(p) ? '<div style="font-size:10.5px;color:var(--text3);margin:2px 0 4px;line-height:1.35">' +
+                itensDe(p).map(c => c.qty + '× ' + (S.products.find(x=>x.id===c.id)?.nome || '?')).join(' + ') + '</div>' : '') +
               '<div class="ci-preco">' + fmt(p.preco) + '</div>' +
-              '<div class="ci-est">' + p.estoque + ' em estoque</div>' +
+              '<div class="ci-est">' + estoqueDe(p) + (itensDe(p) ? ' montáveis' : ' em estoque') + '</div>' +
             '</button>'
           ).join('')}
         </div>
@@ -1411,9 +1484,12 @@ document.addEventListener('keydown', function(e) {
 
 window.addToCart = function(id) {
   const p = S.products.find(x => x.id===id); if(!p) return;
-  if (p.estoque<=0) { toast('Sem estoque!','err'); return; }
+  if (estoqueDe(p)<=0) { toast('Sem estoque!','err'); return; }
+  // Conta o que o carrinho já comprometeu: o mesmo item pode estar avulso e
+  // dentro de um combo, e aí o limite de um só não enxerga o outro.
+  if (!cabeNoCarrinho(p,1)) { toast('Estoque insuficiente!','err'); return; }
   const ex = S.cart.find(x => x.id===id);
-  if (ex) { if (ex.qty>=p.estoque) { toast('Estoque insuficiente!','err'); return; } ex.qty++; }
+  if (ex) ex.qty++;
   else S.cart.push({ id:p.id, nome:p.nome, preco:p.preco, qty:1 });
   renderCart();
 };
@@ -1435,9 +1511,9 @@ function renderCart() {
 window.chgQ = function(id,d) {
   const i = S.cart.find(x => x.id===id); if(!i) return;
   const p = S.products.find(x => x.id===id);
+  if (d>0 && !cabeNoCarrinho(p,d)) { toast('Limite de estoque atingido'); return; }
   i.qty+=d;
   if (i.qty<1) S.cart = S.cart.filter(x => x.id!==id);
-  else if (i.qty>p.estoque) { i.qty=p.estoque; toast('Limite de estoque atingido'); }
   renderCart();
 };
 window.remCI = function(id) { S.cart=S.cart.filter(x=>x.id!==id); renderCart(); };
@@ -1502,28 +1578,45 @@ window.confirmSale = async function() {
   if (S.pm==='dinheiro' && (parseFloat(document.getElementById('cash-in').value)||0)<total) { toast('Valor insuficiente!','err'); return; }
   setSyncing(true);
   try {
-    const updates = S.cart.map(item => {
-      const p = S.products.find(x => x.id===item.id);
-      return updateDoc(doc(db,'products',item.id), { estoque:(p.estoque-item.qty) });
+    // Baixa por PRODUTO, não por linha do carrinho: combo e avulso podem
+    // apontar pro mesmo item, e uma escrita por linha faria a última apagar a
+    // anterior (vendia dois, baixava um).
+    const baixa = consumoCarrinho();
+    const updates = Object.keys(baixa).map(pid => {
+      const p = S.products.find(x => x.id===pid);
+      return updateDoc(doc(db,'products',pid), { estoque: Math.max(0, (p ? p.estoque : 0) - baixa[pid]) });
     });
     await Promise.all(updates);
     // Snapshot do custo + consignação no momento da venda
     // (futuras edições do produto não alteram o histórico de repasses devidos)
     const itemsWithCost = S.cart.map(i => {
       const p = S.products.find(x => x.id===i.id);
-      const filho_id = p?.filho_id || null;
+      const ci = itensDe(p);
+      const filho_id = (!ci && p?.filho_id) ? p.filho_id : null;
       const valor_repasse = filho_id ? (Number(p?.valor_repasse)||0) : 0;
       return {
         id:i.id, nome:i.nome, preco:i.preco, qty:i.qty,
         categoria:p?.categoria||'outros',
-        precoCusto:Number(p?.precoCusto)||0,
+        precoCusto: custoDe(p),
         filho_id,
         filho_nome: filho_id ? (p?.filho_nome || null) : null,
-        valor_repasse
+        valor_repasse,
+        // Combo: fotografia do que tinha dentro no dia. É daqui que sai o
+        // repasse do filho quando o item consignado foi vendido dentro dele.
+        componentes: ci ? ci.map(c => {
+          const comp = S.products.find(x => x.id===c.id);
+          return { id:c.id, nome: comp?.nome || '(removido)', qty: c.qty||1,
+                   precoCusto: Number(comp?.precoCusto)||0,
+                   filho_id: comp?.filho_id || null,
+                   filho_nome: comp?.filho_id ? (comp.filho_nome||null) : null,
+                   valor_repasse: comp?.filho_id ? (Number(comp.valor_repasse)||0) : 0 };
+        }) : null
       };
     });
     const custoTotal = itemsWithCost.reduce((s,i) => s + i.precoCusto * i.qty, 0);
-    const repasseTotal = itemsWithCost.reduce((s,i) => s + (i.valor_repasse * i.qty), 0);
+    const repasseTotal = itemsWithCost.reduce((s,i) =>
+      s + (i.valor_repasse * i.qty)
+        + (i.componentes||[]).reduce((t,c) => t + c.valor_repasse * c.qty * i.qty, 0), 0);
     await addDoc(collection(db,'sales'), {
       items: itemsWithCost,
       total, custoTotal, repasseTotal, method:S.pm,
@@ -1543,19 +1636,26 @@ function renderEstoque() {
   const tbody = document.getElementById('estoque-tbody');
   if (!S.products.length) { tbody.innerHTML='<tr><td colspan="9" class="empty-state">Nenhum produto cadastrado.</td></tr>'; return; }
   tbody.innerHTML = S.products.map(p => {
-    const st = p.estoque===0 ? ['b-out','Sem estoque'] : p.estoque<=p.minimo ? ['b-low','Baixo'] : ['b-ok','OK'];
-    const custo = Number(p.precoCusto)||0;
+    const ci = itensDe(p);
+    const est = estoqueDe(p);
+    const st = est===0 ? ['b-out','Sem estoque'] : est<=(p.minimo||0) ? ['b-low','Baixo'] : ['b-ok','OK'];
+    const custo = custoDe(p);
     const margem = (custo > 0 && p.preco > 0) ? ((p.preco - custo) / p.preco * 100) : null;
     const margemHTML = margem === null
       ? '<span style="color:var(--text3);font-size:11px">—</span>'
       : '<span style="font-weight:600;color:' + (margem < 0 ? 'var(--red)' : margem < 20 ? 'var(--gold)' : 'var(--green)') + '">' + margem.toFixed(0) + '%</span>';
     return '<tr>' +
-      '<td style="padding-left:16px;font-weight:500">' + p.nome + '</td>' +
+      '<td style="padding-left:16px;font-weight:500">' + p.nome +
+        (ci ? '<div style="font-size:11px;color:var(--text3);font-weight:400;margin-top:3px">🎁 ' +
+              ci.map(c => c.qty + '× ' + (S.products.find(x=>x.id===c.id)?.nome || '(item removido)')).join(' · ') +
+              '</div>' : '') + '</td>' +
       '<td style="color:var(--text2)">' + (catLabel[p.categoria]||p.categoria) + '</td>' +
       '<td style="font-weight:600;color:var(--gold)">' + fmt(p.preco) + '</td>' +
       '<td style="color:var(--text2)">' + (custo > 0 ? fmt(custo) : '<span style="color:var(--text3);font-size:11px">—</span>') + '</td>' +
       '<td>' + margemHTML + '</td>' +
-      '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><input class="qty-input" type="number" min="0" step="1" value="' + p.estoque + '" data-id="' + p.id + '" data-prev="' + p.estoque + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=this.dataset.prev;this.blur();}" onblur="setSt(this.dataset.id, this.value, this.dataset.prev)"/><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>' +
+      (ci
+        ? '<td><span title="Sai do item mais escasso do combo — reponha o item, não o combo" style="color:var(--text2);font-weight:600">' + est + '</span> <span style="font-size:11px;color:var(--text3)">montáveis</span></td>'
+        : '<td><div class="qty-sm"><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',-1)">−</button><input class="qty-input" type="number" min="0" step="1" value="' + p.estoque + '" data-id="' + p.id + '" data-prev="' + p.estoque + '" onfocus="this.select()" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=this.dataset.prev;this.blur();}" onblur="setSt(this.dataset.id, this.value, this.dataset.prev)"/><button class="qc-btn" onclick="adjSt(\'' + p.id + '\',1)">+</button></div></td>') +
       '<td style="font-size:11px;color:var(--text3);font-family:monospace">' + p.codigo + '</td>' +
       '<td><span class="badge ' + st[0] + '">' + st[1] + '</span></td>' +
       '<td style="text-align:center;white-space:nowrap"><button class="b-edit" onclick="editProduct(\'' + p.id + '\')" title="Editar produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> <button class="b-del" onclick="askDel(\'' + p.id + '\')" title="Remover produto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button></td>' +
@@ -1585,7 +1685,11 @@ window.setSt = async function(id, val, prev) {
 };
 window.askDel = function(id) {
   const p=S.products.find(x=>x.id===id); if(!p) return;
-  S.delId=id; document.getElementById('del-name').textContent=p.nome;
+  // Apagar um item que mora dentro de combo deixa o combo sem como ser montado
+  const emCombos = S.products.filter(c => (c.combo||[]).some(ci => ci.id===id)).map(c => c.nome);
+  S.delId=id;
+  document.getElementById('del-name').textContent = p.nome +
+    (emCombos.length ? ' — está dentro do combo ' + emCombos.join(', ') : '');
   document.getElementById('modal-del').classList.add('show');
 };
 window.closeDel = () => { document.getElementById('modal-del').classList.remove('show'); S.delId=null; };
@@ -1991,20 +2095,27 @@ function renderRepasses() {
   const porFilho = {}; // {filho_id: {nome, qtd, devido, salesIds:Set}}
   S.sales.forEach(s => {
     if (s.ts < de || s.ts > ate) return;
-    (s.items||[]).forEach(it => {
-      if (!it.filho_id || (it.valor_repasse||0) <= 0) return;
-      if (!porFilho[it.filho_id]) porFilho[it.filho_id] = {
-        filho_id: it.filho_id,
-        filho_nome: it.filho_nome || (S.filhos.find(f=>f.id===it.filho_id)?.nome) || '?',
+    // Uma linha de venda pode dever repasse por si (item consignado avulso) ou
+    // pelos itens que carregava dentro (combo) — as duas entradas caem aqui.
+    const lanca = (filho_id, filho_nome, nome, qtd, unit) => {
+      if (!filho_id || unit <= 0 || qtd <= 0) return;
+      if (!porFilho[filho_id]) porFilho[filho_id] = {
+        filho_id,
+        filho_nome: filho_nome || (S.filhos.find(f=>f.id===filho_id)?.nome) || '?',
         qtd: 0, devido: 0, salesIds: new Set(), porProduto: {}
       };
-      const ent = porFilho[it.filho_id];
-      ent.qtd += it.qty || 0;
-      ent.devido += (it.valor_repasse||0) * (it.qty||0);
+      const ent = porFilho[filho_id];
+      ent.qtd += qtd;
+      ent.devido += unit * qtd;
       ent.salesIds.add(s.id);
-      if (!ent.porProduto[it.nome]) ent.porProduto[it.nome] = { qtd: 0, repasse: 0 };
-      ent.porProduto[it.nome].qtd += it.qty || 0;
-      ent.porProduto[it.nome].repasse += (it.valor_repasse||0) * (it.qty||0);
+      if (!ent.porProduto[nome]) ent.porProduto[nome] = { qtd: 0, repasse: 0 };
+      ent.porProduto[nome].qtd += qtd;
+      ent.porProduto[nome].repasse += unit * qtd;
+    };
+    (s.items||[]).forEach(it => {
+      lanca(it.filho_id, it.filho_nome, it.nome, it.qty||0, it.valor_repasse||0);
+      (it.componentes||[]).forEach(c =>
+        lanca(c.filho_id, c.filho_nome, c.nome, (c.qty||0) * (it.qty||0), c.valor_repasse||0));
     });
   });
 
@@ -2116,7 +2227,7 @@ function renderInsights() {
   }
   document.getElementById('rank-qty').innerHTML = rankHtml(bQ,'qty',v=>v+'un','#e63329');
   document.getElementById('rank-rev').innerHTML = rankHtml(bR,'rev',fmt,'#d4a843');
-  document.getElementById('velocity-list').innerHTML = S.products.map(p => {
+  document.getElementById('velocity-list').innerHTML = S.products.filter(p => !itensDe(p)).map(p => {
     const sold=byP[p.id]?.qty||0; const pct=sold/(p.ei||p.estoqueInicial||1);
     let cls,lbl;
     if (sold===0){cls='vp-none';lbl='Sem vendas';}
@@ -2169,22 +2280,28 @@ window.previewBC = function() {
   w.style.display='block';
   document.getElementById('pv-name').textContent=nome||'—';
   document.getElementById('pv-price').textContent=preco?fmt(preco):'';
+  // O preço mexe no desconto mostrado no combo
+  if (document.getElementById('f-combo-box').style.display === 'block') renderComboList();
   try { JsBarcode('#pv-svg',codigo,{format:'CODE128',width:2,height:55,displayValue:true,fontSize:12,margin:6,background:'transparent',lineColor:'#f0e8d8'}); } catch(e){}
 };
 window.saveProduct = async function() {
   const nome=document.getElementById('f-nome').value.trim();
   const codigo=document.getElementById('f-codigo').value.trim();
   const preco=parseFloat(document.getElementById('f-preco').value);
-  const precoCusto=parseFloat(document.getElementById('f-custo').value)||0;
   const categoria=document.getElementById('f-cat').value;
-  const estoque=parseInt(document.getElementById('f-qtd').value)||0;
+  const isCombo = categoria === 'combo';
+  // Combo não tem estoque nem custo próprio: os dois saem dos itens de dentro
+  const precoCusto = isCombo ? 0 : (parseFloat(document.getElementById('f-custo').value)||0);
+  const estoque = isCombo ? 0 : (parseInt(document.getElementById('f-qtd').value)||0);
+  const combo = isCombo ? S.comboItens.map(c => ({ id:c.id, qty:c.qty })) : null;
   const minimo=parseInt(document.getElementById('f-min').value)||5;
   if (!nome||!codigo||isNaN(preco)) { toast('Preencha nome, código e preço de venda.','err'); return; }
+  if (isCombo && !combo.length) { toast('Adicione pelo menos um item ao combo.','err'); return; }
   // Conflito de código: só bloqueia se outro produto tiver esse código
   const conflito = S.products.find(x => x.codigo===codigo && x.id !== S.editId);
   if (conflito) { toast('Código já cadastrado em outro produto!','err'); return; }
   // Consignação (opcional)
-  const consigOn = document.getElementById('f-consig-on').checked;
+  const consigOn = !isCombo && document.getElementById('f-consig-on').checked;
   const filho_id = consigOn ? (document.getElementById('f-filho').value || null) : null;
   const valor_repasse = consigOn ? (parseFloat(document.getElementById('f-repasse').value)||0) : 0;
   if (consigOn && !filho_id) { toast('Selecione o filho responsável pelo consignado.','err'); return; }
@@ -2195,10 +2312,10 @@ window.saveProduct = async function() {
   try {
     if (S.editId) {
       // Edit mode: preserva ei (estoque inicial) e atualiza só os campos do form
-      await updateDoc(doc(db,'products',S.editId), { nome, codigo, preco, precoCusto, categoria, estoque, minimo, filho_id, filho_nome, valor_repasse });
+      await updateDoc(doc(db,'products',S.editId), { nome, codigo, preco, precoCusto, categoria, estoque, minimo, filho_id, filho_nome, valor_repasse, combo });
       toast('Produto atualizado!','ok');
     } else {
-      await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo,filho_id,filho_nome,valor_repasse});
+      await addDoc(collection(db,'products'),{nome,codigo,preco,precoCusto,categoria,estoque,ei:estoque,minimo,filho_id,filho_nome,valor_repasse,combo});
       toast('Produto salvo com sucesso!','ok');
     }
     cancelEdit();
@@ -2222,6 +2339,92 @@ function renderConsigSelect() {
   if (currentVal) sel.value = currentVal;
 }
 
+// ── COMBO no form de Cadastro ────────────────────────────────────────────
+// Escolher a categoria "Combo" abre a caixa de itens e desliga estoque, custo
+// e consignação: nenhum dos três é do combo, todos vêm do que está dentro.
+window.toggleCombo = function() {
+  const on = document.getElementById('f-cat').value === 'combo';
+  document.getElementById('f-combo-box').style.display = on ? 'block' : 'none';
+  ['f-qtd','f-custo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = on; el.style.opacity = on ? .45 : 1; if (on) el.value = ''; }
+  });
+  const cw = document.getElementById('f-consig-wrap');
+  if (cw) cw.style.display = on ? 'none' : 'block';
+  if (on) {
+    const chk = document.getElementById('f-consig-on');
+    if (chk && chk.checked) { chk.checked = false; toggleConsig(); }
+    renderComboSelect(); renderComboList();
+  }
+};
+
+function renderComboSelect() {
+  const sel = document.getElementById('f-combo-prod');
+  if (!sel) return;
+  const atual = sel.value;
+  // Combo dentro de combo não entra: o estoque derivado viraria recursão
+  const opts = S.products.filter(p => !itensDe(p) && p.id !== S.editId)
+    .sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+  sel.innerHTML = '<option value="">— Selecione —</option>' +
+    opts.map(p => '<option value="' + p.id + '">' + p.nome + ' (' + fmt(p.preco) + ' · ' + (p.estoque||0) + ' un)</option>').join('');
+  if (atual) sel.value = atual;
+}
+
+function renderComboList() {
+  const el = document.getElementById('f-combo-list');
+  if (!el) return;
+  if (!S.comboItens.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3)">Nenhum item no combo ainda.</div>';
+    return;
+  }
+  const linhas = S.comboItens.map(c => {
+    const p = S.products.find(x => x.id === c.id);
+    const nome = p ? p.nome : '(item removido do estoque)';
+    const sub = p ? fmt((p.preco||0) * c.qty) : '—';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;margin-bottom:6px">' +
+      '<span style="font-weight:700;color:var(--gold);min-width:34px">' + c.qty + '×</span>' +
+      '<span style="flex:1;font-size:13px">' + nome + '</span>' +
+      '<span style="font-size:12px;color:var(--text3)">' + sub + '</span>' +
+      '<button onclick="remComboItem(\'' + c.id + '\')" style="background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;line-height:1;padding:0 4px">×</button>' +
+    '</div>';
+  }).join('');
+  // Preço avulso ao lado ajuda a decidir o desconto do combo
+  const avulso = S.comboItens.reduce((t,c) => {
+    const p = S.products.find(x => x.id === c.id);
+    return t + (p ? (p.preco||0) * c.qty : 0);
+  }, 0);
+  const precoCombo = parseFloat(document.getElementById('f-preco').value) || 0;
+  const dif = precoCombo > 0 ? precoCombo - avulso : null;
+  el.innerHTML = linhas +
+    '<div style="margin-top:10px;font-size:12px;color:var(--text3);line-height:1.6">' +
+      'Vendido item a item: <strong style="color:var(--text2)">' + fmt(avulso) + '</strong>' +
+      (dif === null ? ' — preencha o preço de venda acima pra ver o desconto.'
+        : dif < 0 ? ' · combo dá <strong style="color:var(--green)">' + fmt(-dif) + '</strong> de desconto'
+        : dif > 0 ? ' · <strong style="color:var(--red)">combo está ' + fmt(dif) + ' mais caro que os itens avulsos</strong>'
+        : ' · combo custa o mesmo que os avulsos') +
+      '<br/>Custo dos itens: ' + fmt(S.comboItens.reduce((t,c) => {
+        const p = S.products.find(x => x.id === c.id);
+        return t + (Number(p && p.precoCusto)||0) * c.qty;
+      }, 0)) +
+    '</div>';
+}
+
+window.addComboItem = function() {
+  const id = document.getElementById('f-combo-prod').value;
+  const qty = parseInt(document.getElementById('f-combo-qty').value, 10) || 0;
+  if (!id) { toast('Escolha o item do estoque.','err'); return; }
+  if (qty < 1) { toast('Quantidade inválida.','err'); return; }
+  const ex = S.comboItens.find(c => c.id === id);
+  if (ex) ex.qty += qty; else S.comboItens.push({ id, qty });
+  document.getElementById('f-combo-qty').value = 1;
+  document.getElementById('f-combo-prod').value = '';
+  renderComboList();
+};
+window.remComboItem = function(id) {
+  S.comboItens = S.comboItens.filter(c => c.id !== id);
+  renderComboList();
+};
+
 // Sai do modo edit e volta o form ao default de "novo produto"
 window.cancelEdit = function() {
   S.editId = null;
@@ -2233,6 +2436,8 @@ window.cancelEdit = function() {
   const consigChk = document.getElementById('f-consig-on'); if (consigChk) consigChk.checked = false;
   const consigBox = document.getElementById('f-consig-box'); if (consigBox) consigBox.style.display = 'none';
   const filhoSel = document.getElementById('f-filho'); if (filhoSel) filhoSel.value = '';
+  S.comboItens = [];
+  toggleCombo();
 };
 
 // Abre o panel-cadastro e pré-preenche o form com o produto a editar
@@ -2251,6 +2456,9 @@ window.editProduct = function(id) {
   document.getElementById('f-cat').value = p.categoria||'outros';
   document.getElementById('f-qtd').value = p.estoque||0;
   document.getElementById('f-min').value = p.minimo||5;
+  // Combo
+  S.comboItens = (p.combo||[]).map(c => ({ id:c.id, qty:c.qty||1 }));
+  toggleCombo();
   // Consignação
   const consigChk = document.getElementById('f-consig-on');
   if (consigChk) {
@@ -2283,7 +2491,9 @@ function _sugerirCategoria(nome) {
 }
 
 window.autoCategorizar = async function() {
-  const sugestoes = S.products.map(p => {
+  // Combo tem categoria própria e nome livre ("Combo Festa") — o palpite por
+  // texto tiraria ele da aba de Combos e a venda perderia o botão.
+  const sugestoes = S.products.filter(p => !itensDe(p)).map(p => {
     const atual = p.categoria || 'outros';
     const sugerida = _sugerirCategoria(p.nome);
     return { p, atual, sugerida: sugerida || 'outros', mudou: (sugerida && sugerida !== atual) || (!sugerida && atual !== 'outros' && atual !== p.categoria) };
