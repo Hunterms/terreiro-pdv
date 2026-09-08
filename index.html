@@ -581,6 +581,7 @@ input[type="date"]{color-scheme:dark}
     </div>
     <div class="metrics-grid" id="caixa-metrics"></div>
     <div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px" id="caixa-methods"></div>
+    <div class="card" id="caixa-gaveta"></div>
     <div class="card">
       <div class="card-title" id="caixa-hist-title">Histórico</div>
       <div id="hist-list"><div class="empty-state">Carregando...</div></div>
@@ -1012,7 +1013,10 @@ const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null
   editId:null,        // id do produto sendo editado em Cadastro (null = criar novo)
   filhos:[],          // filhos da casa pra produtos consignados (read-only do admin)
   repasses:[],        // histórico de pagamentos de repasse pra filhos
-  comboItens:[]       // itens do combo sendo montado no form de Cadastro
+  comboItens:[],      // itens do combo sendo montado no form de Cadastro
+  salesCanceladas:[], // vendas estornadas — fora de S.sales, mas o histórico mostra
+  caixaMov:[],        // pdv_caixa_mov — fundo de troco, sangria, suprimento, conferência
+  usuario:null        // email de quem está logado, pra assinar estorno e sangria
 };
 let hChart = null;
 
@@ -1094,14 +1098,37 @@ onSnapshot(query(collection(db,'products'), orderBy('nome')), snap => {
   focusScan();
 });
 
+// Venda estornada some de `S.sales` AQUI, e não em cada lugar que soma.
+//
+// São cinco leitores de `S.sales` neste arquivo e oito no financeiro. Filtrar
+// em treze pontos é escrever o bug: alguém acrescenta o décimo quarto e a
+// venda cancelada volta pro faturamento sem nada reclamar. Filtrando na
+// entrada, quem soma continua certo sem saber que estorno existe.
+//
+// As canceladas não somem do mundo — vão pra `S.salesCanceladas`, porque o
+// histórico do caixa tem que MOSTRAR o estorno. Venda que some da tela é o que
+// faz o operador achar que errou de novo e lançar duas vezes.
 onSnapshot(query(collection(db,'sales'), orderBy('ts','desc')), snap => {
-  S.sales = snap.docs.map(d => {
+  const todas = snap.docs.map(d => {
+    const data = d.data();
+    return { id:d.id, ...data, ts:data.ts?.toDate ? data.ts.toDate() : new Date() };
+  });
+  S.sales = todas.filter(v => !v.cancelada);
+  S.salesCanceladas = todas.filter(v => v.cancelada);
+  if (document.getElementById('panel-caixa').classList.contains('active')) renderCaixa();
+  if (document.getElementById('panel-insights').classList.contains('active')) renderInsights();
+  if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
+});
+
+// Fundo de troco, sangria, suprimento e conferência. Collection nova; se a
+// regra ainda não estiver publicada, o embrulho do onSnapshot pinta o aviso em
+// vez de a tela mostrar gaveta vazia — que pareceria dado.
+onSnapshot(query(collection(db,'pdv_caixa_mov'), orderBy('ts','desc')), snap => {
+  S.caixaMov = snap.docs.map(d => {
     const data = d.data();
     return { id:d.id, ...data, ts:data.ts?.toDate ? data.ts.toDate() : new Date() };
   });
   if (document.getElementById('panel-caixa').classList.contains('active')) renderCaixa();
-  if (document.getElementById('panel-insights').classList.contains('active')) renderInsights();
-  if (document.getElementById('panel-relatorio').classList.contains('active')) renderRelatorio();
 });
 
 // ── EVENTOS DE CAIXA ──────────────────────────────────────────────────────
@@ -1786,14 +1813,235 @@ function renderCaixa() {
     }
   }
 
-  document.getElementById('hist-list').innerHTML = ts.length===0 ?
+  // ── A GAVETA ────────────────────────────────────────────────────────────
+  // Quanto DEVERIA ter em dinheiro, e o que já foi contado. Só dinheiro entra
+  // na conta: pix e cartão não passam pela gaveta.
+  const movs = movsDoDia();
+  const esperado = esperadoEmDinheiro();
+  const soma = (t) => movs.filter(m => m.tipo===t).reduce((x,m)=>x+(Number(m.valor)||0),0);
+  const confs = movs.filter(m => m.tipo==='conferencia').sort((a,b)=>b.ts-a.ts);
+  const ultima = confs[0];
+  const dinheiroVendido = ts.filter(v => v.method==='dinheiro').reduce((x,v)=>x+(Number(v.total)||0),0);
+
+  const linha = (rot, val, cor) =>
+    '<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0">' +
+    '<span style="color:var(--text2)">' + rot + '</span>' +
+    '<span style="font-weight:600;color:' + (cor||'var(--text)') + '">' + val + '</span></div>';
+
+  document.getElementById('caixa-gaveta').innerHTML =
+    '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
+      '<div style="font-weight:650;font-size:14px">Dinheiro na gaveta</div>' +
+      '<div style="font-size:11.5px;color:var(--text3)">pix e cartão não entram aqui</div>' +
+    '</div>' +
+    linha('Fundo de troco', fmt(soma('fundo'))) +
+    linha('Vendas em dinheiro', fmt(dinheiroVendido)) +
+    (soma('suprimento') ? linha('Suprimentos', '+ ' + fmt(soma('suprimento'))) : '') +
+    (soma('sangria') ? linha('Sangrias', '− ' + fmt(soma('sangria')), 'var(--gold)') : '') +
+    '<div style="border-top:1px solid var(--border2);margin:8px 0 6px"></div>' +
+    linha('<strong>Deveria ter</strong>', '<strong>' + fmt(esperado) + '</strong>') +
+    (ultima
+      ? linha('Contado ' + ultima.ts.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+              fmt(ultima.valor) +
+              (Math.abs(ultima.quebra||0) < 0.005
+                ? ' <span style="color:var(--green);font-size:12px">bateu</span>'
+                : ' <span style="color:var(--red);font-size:12px">' + (ultima.quebra>0?'sobrou ':'faltou ') + fmt(Math.abs(ultima.quebra)) + '</span>'))
+      : '<div style="font-size:12.5px;color:var(--text3);padding:5px 0">Ninguém conferiu este dia ainda.</div>') +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+      '<button class="btn-secondary" onclick="registrarMov(\'fundo\')">Fundo de troco</button>' +
+      '<button class="btn-secondary" onclick="registrarMov(\'sangria\')">Sangria</button>' +
+      '<button class="btn-secondary" onclick="registrarMov(\'suprimento\')">Suprimento</button>' +
+      '<button class="btn-primary" onclick="conferirCaixa()">Conferir e fechar</button>' +
+    '</div>' +
+    (movs.filter(m => m.tipo==='sangria'||m.tipo==='suprimento').length
+      ? '<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">' +
+        movs.filter(m => m.tipo==='sangria'||m.tipo==='suprimento').map(m =>
+          '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--text3);padding:3px 0">' +
+          '<span>' + MOV_LABEL[m.tipo] + ' · ' + escHtml(m.motivo||'') + '</span>' +
+          '<span>' + (m.tipo==='sangria'?'−':'+') + ' ' + fmt(m.valor) + '</span></div>').join('') +
+        '</div>'
+      : '');
+
+  // ── HISTÓRICO ───────────────────────────────────────────────────────────
+  // As estornadas do dia entram junto, riscadas. Venda que some depois do
+  // estorno faz o operador achar que errou de novo e lançar duas vezes.
+  const cancDoDia = (S.salesCanceladas||[]).filter(s => s.ts >= dayStart && s.ts <= dayEnd);
+  const linhas = [...ts.map(s => ({s, canc:false})), ...cancDoDia.map(s => ({s, canc:true}))]
+    .sort((a,b) => b.s.ts - a.s.ts);
+
+  document.getElementById('hist-list').innerHTML = linhas.length===0 ?
     '<div class="empty-state">Nenhuma venda registrada neste dia.</div>' :
-    ts.map(s =>
-      '<div class="hist-row"><div class="hdot" style="background:' + (mColors[s.method]||'#888') + '"></div>' +
-      '<div class="hinfo"><div class="hname">' + s.items.map(i=>i.nome).join(', ') + '</div>' +
-      '<div class="hmeta">' + s.time + ' · ' + (mLabel[s.method]||s.method) + '</div></div>' +
-      '<span class="hamount">' + fmt(s.total) + '</span></div>'
+    linhas.map(({s, canc}) =>
+      '<div class="hist-row"' + (canc ? ' style="opacity:.55"' : '') + '>' +
+      '<div class="hdot" style="background:' + (canc ? 'var(--red)' : (mColors[s.method]||'#888')) + '"></div>' +
+      '<div class="hinfo"><div class="hname"' + (canc ? ' style="text-decoration:line-through"' : '') + '>' +
+        escHtml(s.items.map(i=>i.nome).join(', ')) + '</div>' +
+      '<div class="hmeta">' + escHtml(s.time||'') + ' · ' + (mLabel[s.method]||escHtml(s.method||'')) +
+        (canc ? ' · <span style="color:var(--red)">estornada' + (s.cancelada_motivo ? ': ' + escHtml(s.cancelada_motivo) : '') + '</span>' : '') +
+      '</div></div>' +
+      (canc
+        ? '<span class="hamount" style="text-decoration:line-through">' + fmt(s.total) + '</span>'
+        : '<span class="hamount">' + fmt(s.total) + '</span>' +
+          '<button class="btn-secondary" style="margin-left:10px;padding:4px 10px;font-size:12px" onclick="estornarVenda(\'' + escAttr(s.id) + '\')">Estornar</button>') +
+      '</div>'
     ).join('');
+}
+
+// O motivo do estorno e da sangria é texto que alguém digita, e vai pro
+// innerHTML do histórico. Não é "texto de fora" — quem digita está logado —
+// mas um `<b>` sem par quebra a linha inteira, e um `'` no id fecha o onclick.
+// Duas linhas resolvem as duas coisas.
+const escHtml = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => (
+  { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+));
+// Dentro de onclick="..." o navegador desfaz a entidade antes de rodar o JS.
+const escAttr = (t) => String(t ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+// ── ESTORNO ───────────────────────────────────────────────────────────────
+//
+// Medido em 08/09: o PDV não tinha como desfazer uma venda. O `deleteDoc` do
+// arquivo existe pra `products` e mais nada — venda errada ficava, e o único
+// jeito de "consertar" era lançar outra coisa por cima ou deixar o caixa
+// fechar torto. Qualquer PDV de prateleira tem estorno; é o primeiro botão que
+// falta quando um voluntário passa o produto errado numa fila de gira.
+//
+// Estorno NÃO apaga. A venda continua no banco, marcada, com hora e motivo —
+// apagar seria trocar um erro visível por um buraco invisível, e num caixa
+// buraco invisível é como some dinheiro sem ninguém mentir.
+
+window.estornarVenda = async function(id) {
+  const v = S.sales.find(x => x.id === id);
+  if (!v) { toast('Venda não encontrada','err'); return; }
+
+  const motivo = (prompt(
+    'Estornar ' + fmt(v.total) + ' (' + v.items.map(i => i.nome).join(', ') + ')?\n\n' +
+    'O estoque volta e a venda sai do faturamento. Ela continua no histórico, marcada.\n\n' +
+    'Por quê?'
+  ) || '').trim();
+  if (!motivo) return;   // cancelou, ou não quis dizer — nos dois casos não estorna
+
+  setSyncing(true);
+  try {
+    // O estoque volta pelo MESMO caminho que saiu: por produto, somando
+    // componente de combo. Devolver por linha do carrinho devolveria a menos
+    // quando o mesmo item aparece avulso e dentro do combo na mesma venda.
+    const volta = {};
+    for (const i of (v.items || [])) {
+      const q = Number(i.qty) || 0;
+      if (i.componentes && i.componentes.length) {
+        for (const c of i.componentes) volta[c.id] = (volta[c.id] || 0) + (Number(c.qty)||1) * q;
+      } else {
+        volta[i.id] = (volta[i.id] || 0) + q;
+      }
+    }
+    await Promise.all(Object.keys(volta).map(pid => {
+      const p = S.products.find(x => x.id === pid);
+      if (!p) return null;          // produto apagado depois da venda: não dá pra repor
+      return updateDoc(doc(db,'products',pid), { estoque: (Number(p.estoque)||0) + volta[pid] });
+    }).filter(Boolean));
+
+    await updateDoc(doc(db,'sales',id), {
+      cancelada: true,
+      cancelada_em: serverTimestamp(),
+      cancelada_motivo: motivo.slice(0, 200),
+      cancelada_por: S.usuario || null,
+    });
+    toast('Venda estornada. Estoque devolvido.','ok');
+  } catch(e) { toast('Erro ao estornar: ' + e.message,'err'); }
+  finally { setSyncing(false); }
+};
+
+// ── DINHEIRO NA GAVETA ────────────────────────────────────────────────────
+//
+// O caixa sabia quanto VENDEU e não sabia quanto tinha na gaveta. São coisas
+// diferentes: entra fundo de troco, sai sangria, entra suprimento, e o que
+// devia estar lá no fim é uma conta — não a soma das vendas.
+//
+// A diferença entre a conta e o que foi contado é a QUEBRA. É o controle mais
+// velho do varejo e o único que pega, numa lojinha tocada por voluntário, a
+// diferença entre erro de troco e dinheiro que sumiu — sem acusar ninguém: o
+// número aparece todo dia, e um dia ruim vira conversa, não suspeita.
+
+const MOV_LABEL = { fundo:'Fundo de troco', sangria:'Sangria', suprimento:'Suprimento', conferencia:'Conferência' };
+
+window.registrarMov = async function(tipo) {
+  const rotulo = MOV_LABEL[tipo] || tipo;
+  const bruto = prompt(rotulo + ' — quanto? (só o número, em reais)');
+  if (bruto === null) return;
+  const valor = parseFloat(String(bruto).replace(/\./g,'').replace(',','.'));
+  if (!isFinite(valor) || valor < 0) { toast('Valor inválido','err'); return; }
+  const motivo = tipo === 'sangria' || tipo === 'suprimento'
+    ? (prompt(rotulo + ' de ' + fmt(valor) + ' — por quê?') || '').trim()
+    : '';
+  if ((tipo === 'sangria' || tipo === 'suprimento') && !motivo) return;
+
+  setSyncing(true);
+  try {
+    await addDoc(collection(db,'pdv_caixa_mov'), {
+      tipo, valor, motivo: motivo.slice(0,200),
+      dia: caixaDiaISO(),
+      quem: S.usuario || null,
+      eventoId: S.eventoAtivo?.id || null,
+      ts: serverTimestamp(),
+    });
+    toast(rotulo + ' de ' + fmt(valor) + ' registrado','ok');
+  } catch(e) {
+    toast('Erro: ' + e.message + ' — a regra de pdv_caixa_mov já foi publicada?','err');
+  }
+  finally { setSyncing(false); }
+};
+
+// Confere: pede o contado, calcula a quebra e grava as duas coisas juntas.
+// Gravar só a quebra perderia o contado, e é o contado que a próxima pessoa
+// quer ver quando o número não bate.
+window.conferirCaixa = async function() {
+  const esperado = esperadoEmDinheiro();
+  const bruto = prompt('Conta o dinheiro da gaveta e escreve aqui.\n\nPelo sistema deveria ter ' + fmt(esperado) + '.');
+  if (bruto === null) return;
+  const contado = parseFloat(String(bruto).replace(/\./g,'').replace(',','.'));
+  if (!isFinite(contado) || contado < 0) { toast('Valor inválido','err'); return; }
+  const quebra = contado - esperado;
+
+  setSyncing(true);
+  try {
+    await addDoc(collection(db,'pdv_caixa_mov'), {
+      tipo: 'conferencia', valor: contado, esperado, quebra,
+      motivo: '', dia: caixaDiaISO(), quem: S.usuario || null,
+      eventoId: S.eventoAtivo?.id || null, ts: serverTimestamp(),
+    });
+    toast(Math.abs(quebra) < 0.005
+      ? 'Bateu certinho.'
+      : (quebra > 0 ? 'Sobrou ' : 'Faltou ') + fmt(Math.abs(quebra)) + '. Fica registrado.',
+      Math.abs(quebra) < 0.005 ? 'ok' : 'err');
+  } catch(e) {
+    toast('Erro: ' + e.message + ' — a regra de pdv_caixa_mov já foi publicada?','err');
+  }
+  finally { setSyncing(false); }
+};
+
+// O dia que a tela de caixa está olhando, no formato dos docs de movimento.
+function caixaDiaISO() {
+  const el = document.getElementById('caixa-date');
+  return (el && el.value) || new Date().toISOString().slice(0,10);
+}
+
+function movsDoDia() {
+  const dia = caixaDiaISO();
+  return (S.caixaMov || []).filter(m => m.dia === dia);
+}
+
+// Fundo + vendas em dinheiro + suprimentos − sangrias. Pix e cartão não entram:
+// não passam pela gaveta, e somá-los é o jeito mais rápido de a conferência
+// acusar falta todo dia e ninguém mais olhar.
+function esperadoEmDinheiro() {
+  const dia = caixaDiaISO();
+  const [y,m,d] = dia.split('-').map(Number);
+  const ini = new Date(y, m-1, d, 0,0,0), fim = new Date(y, m-1, d, 23,59,59);
+  const emDinheiro = S.sales
+    .filter(s => s.method === 'dinheiro' && s.ts >= ini && s.ts <= fim)
+    .reduce((t,s) => t + (Number(s.total)||0), 0);
+  const movs = movsDoDia();
+  const soma = (tipo) => movs.filter(m => m.tipo === tipo).reduce((t,m) => t + (Number(m.valor)||0), 0);
+  return soma('fundo') + emDinheiro + soma('suprimento') - soma('sangria');
 }
 
 function getFS() {
@@ -2561,6 +2809,10 @@ if (IS_LOJA_MODE) document.body.classList.add('loja-mode');
 let listenersNoAr = false;
 onAuthStateChanged(auth, (user) => {
   if (user) {
+    // Estorno e sangria são atos de dinheiro e precisam de dono. Sem isto, o
+    // registro diz o que aconteceu e não diz quem fez — que numa lojinha de
+    // turno é metade da informação.
+    S.usuario = user.email || null;
     hideLoginScreen();
     if (!listenersNoAr) { listenersNoAr = true; startListeners(); }
   } else if (!listenersNoAr) {
