@@ -942,6 +942,10 @@ const db = getFirestore(app);
 // o sessionStorage anterior não fazia.
 const auth = getAuth(app);
 
+// Fica FORA de startListeners de proposito: o callback de auth precisa gravar
+// isto antes de startListeners existir. Dentro do S nao dava — o S nasce la dentro.
+let usuarioLogado = null; // email de quem esta logado, pra assinar estorno e sangria
+
 function showLoginScreen() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('login-screen').classList.add('show');
@@ -1015,8 +1019,7 @@ const S = { products:[], sales:[], cart:[], pm:'dinheiro', cseq:3000, delId:null
   repasses:[],        // histórico de pagamentos de repasse pra filhos
   comboItens:[],      // itens do combo sendo montado no form de Cadastro
   salesCanceladas:[], // vendas estornadas — fora de S.sales, mas o histórico mostra
-  caixaMov:[],        // pdv_caixa_mov — fundo de troco, sangria, suprimento, conferência
-  usuario:null        // email de quem está logado, pra assinar estorno e sangria
+  caixaMov:[]         // pdv_caixa_mov — fundo de troco, sangria, suprimento, conferência
 };
 let hChart = null;
 
@@ -1943,7 +1946,7 @@ window.estornarVenda = async function(id) {
       cancelada: true,
       cancelada_em: serverTimestamp(),
       cancelada_motivo: motivo.slice(0, 200),
-      cancelada_por: S.usuario || null,
+      cancelada_por: usuarioLogado || null,
     });
     toast('Venda estornada. Estoque devolvido.','ok');
   } catch(e) { toast('Erro ao estornar: ' + e.message,'err'); }
@@ -1979,7 +1982,7 @@ window.registrarMov = async function(tipo) {
     await addDoc(collection(db,'pdv_caixa_mov'), {
       tipo, valor, motivo: motivo.slice(0,200),
       dia: caixaDiaISO(),
-      quem: S.usuario || null,
+      quem: usuarioLogado || null,
       eventoId: S.eventoAtivo?.id || null,
       ts: serverTimestamp(),
     });
@@ -2005,7 +2008,7 @@ window.conferirCaixa = async function() {
   try {
     await addDoc(collection(db,'pdv_caixa_mov'), {
       tipo: 'conferencia', valor: contado, esperado, quebra,
-      motivo: '', dia: caixaDiaISO(), quem: S.usuario || null,
+      motivo: '', dia: caixaDiaISO(), quem: usuarioLogado || null,
       eventoId: S.eventoAtivo?.id || null, ts: serverTimestamp(),
     });
     toast(Math.abs(quebra) < 0.005
@@ -2812,7 +2815,7 @@ onAuthStateChanged(auth, (user) => {
     // Estorno e sangria são atos de dinheiro e precisam de dono. Sem isto, o
     // registro diz o que aconteceu e não diz quem fez — que numa lojinha de
     // turno é metade da informação.
-    S.usuario = user.email || null;
+    usuarioLogado = user.email || null;
     hideLoginScreen();
     if (!listenersNoAr) { listenersNoAr = true; startListeners(); }
   } else if (!listenersNoAr) {
