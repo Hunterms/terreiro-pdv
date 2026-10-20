@@ -430,7 +430,7 @@ input[type="date"]{color-scheme:dark}
     <button type="button" onclick="togglePedido(true)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:var(--font);text-decoration:underline">Não tem acesso? Pedir cadastro</button>
   </div>
   <!-- Pedido de acesso: a conta nasce desabilitada no Worker e um admin aprova
-       aqui mesmo, no painel "Acessos". -->
+       no admin do terreiro, aba "Acessos ao PDV". -->
   <form class="login-box" id="pedido-box" style="display:none" onsubmit="event.preventDefault();pedirAcesso()">
     <div style="text-align:center">
       <div class="login-title">Pedir acesso</div>
@@ -484,7 +484,6 @@ input[type="date"]{color-scheme:dark}
     <button onclick="showPanel('insights',this)">Insights</button>
     <button onclick="showPanel('cadastro',this)">Cadastrar</button>
     <button onclick="showPanel('codigos',this)">Códigos</button>
-    <button id="nav-acessos" style="display:none" onclick="showPanel('acessos',this)">Acessos</button>
   </div>
 
   <!-- PDV -->
@@ -755,13 +754,6 @@ input[type="date"]{color-scheme:dark}
     <div class="bc-grid" id="bc-grid"></div>
   </div>
 
-  <!-- ACESSOS — só aparece pra admin. Quem pediu cadastro na tela de login. -->
-  <div id="panel-acessos" class="panel">
-    <div class="card">
-      <div class="card-title">Pedidos de acesso</div>
-      <div id="acessos-lista" style="display:flex;flex-direction:column;gap:10px"></div>
-    </div>
-  </div>
 </div>
 
 <!-- MODAL PAGAMENTO -->
@@ -1068,61 +1060,6 @@ window.pedirAcesso = async function() {
   }
 };
 
-// ── APROVAR ACESSO (admin) ───────────────────────────────────────────────────
-// Mesmo critério de admin das rules: claim `admin` ou email na rede de segurança.
-const ADMINS_POR_EMAIL = ['hunter.soares.c@gmail.com', 'nandomacedo42@gmail.com'];
-
-async function ligarAcessosSeAdmin(user) {
-  const { claims } = await user.getIdTokenResult();
-  if (!claims.admin && !ADMINS_POR_EMAIL.includes((user.email || '').toLowerCase())) return;
-  document.getElementById('nav-acessos').style.display = '';
-  onSnapshot(query(collection(db, 'pdv_cadastros'), where('status', '==', 'pendente')), (snap) => {
-    const nav = document.getElementById('nav-acessos');
-    nav.textContent = snap.size ? `Acessos (${snap.size})` : 'Acessos';
-    const lista = document.getElementById('acessos-lista');
-    lista.replaceChildren();
-    if (!snap.size) {
-      const vazio = document.createElement('div');
-      vazio.className = 'empty-state';
-      vazio.textContent = 'Nenhum pedido esperando.';
-      return lista.append(vazio);
-    }
-    // textContent, nunca innerHTML: nome e email vêm de um formulário público.
-    snap.docs.forEach((d) => {
-      const p = d.data();
-      const linha = document.createElement('div');
-      linha.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap';
-      const quem = document.createElement('div');
-      quem.textContent = `${p.nome} · ${p.email}`;
-      const acoes = document.createElement('div');
-      acoes.style.cssText = 'display:flex;gap:8px';
-      const sim = document.createElement('button');
-      sim.className = 'btn-primary'; sim.textContent = 'Aprovar';
-      sim.onclick = () => julgarAcesso(d.id, true, p.nome);
-      const nao = document.createElement('button');
-      nao.className = 'btn-ghost'; nao.textContent = 'Recusar';
-      nao.onclick = () => julgarAcesso(d.id, false, p.nome);
-      acoes.append(sim, nao);
-      linha.append(quem, acoes);
-      lista.append(linha);
-    });
-  });
-}
-
-async function julgarAcesso(uid, aprovar, nome) {
-  if (!aprovar && !confirm(`Recusar ${nome}? A conta é apagada.`)) return;
-  try {
-    const r = await fetch(WORKER_URL + '/pdv-aprovar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: await auth.currentUser.getIdToken(), uid, aprovar }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) return toast(d.error || 'Não consegui agora.', 'err');
-    toast(aprovar ? `${nome} pode entrar no PDV` : `${nome} recusado`);
-  } catch {
-    toast('Sem conexão.', 'err');
-  }
-}
 
 function startListeners() {
 document.getElementById('loading').style.display = 'flex';
@@ -2960,7 +2897,7 @@ onAuthStateChanged(auth, (user) => {
     // turno é metade da informação.
     usuarioLogado = user.email || null;
     hideLoginScreen();
-    if (!listenersNoAr) { listenersNoAr = true; startListeners(); ligarAcessosSeAdmin(user).catch(console.warn); }
+    if (!listenersNoAr) { listenersNoAr = true; startListeners(); }
   } else if (!listenersNoAr) {
     showLoginScreen();
   }
