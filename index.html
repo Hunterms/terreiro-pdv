@@ -44,7 +44,7 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .spinner{width:28px;height:28px;border:2px solid rgba(255,255,255,0.08);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* LOGIN */
-#login-screen{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:var(--bg);background-image:radial-gradient(ellipse at center,rgba(230,51,41,0.06) 0%,transparent 70%)}
+#login-screen{position:fixed;inset:0;overflow-y:auto;z-index:1000;display:none;align-items:center;justify-content:center;background:var(--bg);background-image:radial-gradient(ellipse at center,rgba(230,51,41,0.06) 0%,transparent 70%)}
 #login-screen.show{display:flex}
 .login-box{width:400px;max-width:92vw;background:rgba(255,255,255,0.04);backdrop-filter:blur(24px);border:1px solid rgba(230,51,41,0.2);border-radius:22px;padding:44px;display:flex;flex-direction:column;align-items:center;gap:24px;box-shadow:0 0 60px rgba(230,51,41,0.08),0 0 120px rgba(0,0,0,.5)}
 .login-icon{width:56px;height:56px;background:linear-gradient(135deg,var(--red),var(--red2));border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(230,51,41,0.35)}
@@ -404,7 +404,7 @@ input[type="date"]{color-scheme:dark}
 <body>
 
 <div id="login-screen">
-  <div class="login-box">
+  <div class="login-box" id="login-box">
     <div style="display:flex;flex-direction:column;align-items:center;gap:16px">
       <div class="login-icon">
         <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
@@ -426,7 +426,25 @@ input[type="date"]{color-scheme:dark}
     </div>
     <div class="login-err" id="login-err">Email ou senha incorretos</div>
     <button class="btn-login" onclick="doLogin()">Entrar</button>
+    <button type="button" onclick="togglePedido(true)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:var(--font);text-decoration:underline">Não tem acesso? Pedir cadastro</button>
   </div>
+  <!-- Pedido de acesso: a conta nasce desabilitada no Worker e um admin aprova
+       aqui mesmo, no painel "Acessos". -->
+  <form class="login-box" id="pedido-box" style="display:none" onsubmit="event.preventDefault();pedirAcesso()">
+    <div style="text-align:center">
+      <div class="login-title">Pedir acesso</div>
+      <div class="login-sub">um admin aprova antes do primeiro login</div>
+    </div>
+    <div class="login-fields">
+      <div class="login-field"><label>Nome completo</label><input id="ped-nome" required minlength="3" maxlength="120" autocomplete="name"/></div>
+      <div class="login-field"><label>Email</label><input id="ped-email" type="email" required autocapitalize="off" spellcheck="false" autocomplete="email"/></div>
+      <div class="login-field"><label>Senha</label><input id="ped-senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"/></div>
+      <div class="login-field"><label>Repita a senha</label><input id="ped-senha2" type="password" required minlength="8" autocomplete="new-password"/></div>
+    </div>
+    <div class="login-err" id="ped-msg"></div>
+    <button class="btn-login" id="ped-btn" type="submit">Enviar pedido</button>
+    <button type="button" onclick="togglePedido(false)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:var(--font);text-decoration:underline">Voltar pro login</button>
+  </form>
 </div>
 
 <div id="loading" style="display:none">
@@ -465,6 +483,7 @@ input[type="date"]{color-scheme:dark}
     <button onclick="showPanel('insights',this)">Insights</button>
     <button onclick="showPanel('cadastro',this)">Cadastrar</button>
     <button onclick="showPanel('codigos',this)">Códigos</button>
+    <button id="nav-acessos" style="display:none" onclick="showPanel('acessos',this)">Acessos</button>
   </div>
 
   <!-- PDV -->
@@ -734,6 +753,14 @@ input[type="date"]{color-scheme:dark}
     </div>
     <div class="bc-grid" id="bc-grid"></div>
   </div>
+
+  <!-- ACESSOS — só aparece pra admin. Quem pediu cadastro na tela de login. -->
+  <div id="panel-acessos" class="panel">
+    <div class="card">
+      <div class="card-title">Pedidos de acesso</div>
+      <div id="acessos-lista" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL PAGAMENTO -->
@@ -969,7 +996,9 @@ window.doLogin = function() {
       console.warn('login falhou:', e?.code || e);
       err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(e?.code || '')
         ? 'Email ou senha incorretos'
-        : 'Não foi possível entrar. Tenta de novo.';
+        : e?.code === 'auth/user-disabled'
+          ? 'Seu pedido de acesso ainda espera a aprovação de um admin.'
+          : 'Não foi possível entrar. Tenta de novo.';
       err.style.display = 'block';
       document.getElementById('login-pass').value = '';
       document.getElementById('login-pass').focus();
@@ -980,6 +1009,101 @@ window.doLogin = function() {
 window.doLogout = function() {
   signOut(auth).then(() => location.reload());
 };
+
+// ── PEDIDO DE ACESSO ─────────────────────────────────────────────────────────
+// Quem cria a conta é o Worker, desabilitada. Criar aqui no navegador não
+// serve: conta habilitada sem papel já lê o banco inteiro pela regra genérica.
+const WORKER_URL = 'https://terreiro-email.hunter-soares-c.workers.dev';
+
+window.togglePedido = function(abrir) {
+  document.getElementById('login-box').style.display = abrir ? 'none' : 'flex';
+  document.getElementById('pedido-box').style.display = abrir ? 'flex' : 'none';
+  document.getElementById(abrir ? 'ped-nome' : 'login-user').focus();
+};
+
+window.pedirAcesso = async function() {
+  const msg = document.getElementById('ped-msg'), btn = document.getElementById('ped-btn');
+  const senha = document.getElementById('ped-senha').value;
+  const mostra = (t) => { msg.textContent = t; msg.style.display = 'block'; };
+  if (senha !== document.getElementById('ped-senha2').value) return mostra('As duas senhas não são iguais.');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    const r = await fetch(WORKER_URL + '/pdv-cadastro', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome: document.getElementById('ped-nome').value,
+        email: document.getElementById('ped-email').value,
+        senha,
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return mostra(d.error || 'Não consegui enviar. Tenta de novo.');
+    document.getElementById('pedido-box').reset();
+    mostra(d.ja_na_fila
+      ? 'Esse email já está na fila. Assim que um admin aprovar, é só entrar.'
+      : 'Pedido enviado. Assim que um admin aprovar, é só entrar com esse email e senha.');
+  } catch {
+    mostra('Sem conexão. Tenta de novo.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar pedido';
+  }
+};
+
+// ── APROVAR ACESSO (admin) ───────────────────────────────────────────────────
+// Mesmo critério de admin das rules: claim `admin` ou email na rede de segurança.
+const ADMINS_POR_EMAIL = ['hunter.soares.c@gmail.com', 'nandomacedo42@gmail.com'];
+
+async function ligarAcessosSeAdmin(user) {
+  const { claims } = await user.getIdTokenResult();
+  if (!claims.admin && !ADMINS_POR_EMAIL.includes((user.email || '').toLowerCase())) return;
+  document.getElementById('nav-acessos').style.display = '';
+  onSnapshot(query(collection(db, 'pdv_cadastros'), where('status', '==', 'pendente')), (snap) => {
+    const nav = document.getElementById('nav-acessos');
+    nav.textContent = snap.size ? `Acessos (${snap.size})` : 'Acessos';
+    const lista = document.getElementById('acessos-lista');
+    lista.replaceChildren();
+    if (!snap.size) {
+      const vazio = document.createElement('div');
+      vazio.className = 'empty-state';
+      vazio.textContent = 'Nenhum pedido esperando.';
+      return lista.append(vazio);
+    }
+    // textContent, nunca innerHTML: nome e email vêm de um formulário público.
+    snap.docs.forEach((d) => {
+      const p = d.data();
+      const linha = document.createElement('div');
+      linha.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap';
+      const quem = document.createElement('div');
+      quem.textContent = `${p.nome} · ${p.email}`;
+      const acoes = document.createElement('div');
+      acoes.style.cssText = 'display:flex;gap:8px';
+      const sim = document.createElement('button');
+      sim.className = 'btn-primary'; sim.textContent = 'Aprovar';
+      sim.onclick = () => julgarAcesso(d.id, true, p.nome);
+      const nao = document.createElement('button');
+      nao.className = 'btn-ghost'; nao.textContent = 'Recusar';
+      nao.onclick = () => julgarAcesso(d.id, false, p.nome);
+      acoes.append(sim, nao);
+      linha.append(quem, acoes);
+      lista.append(linha);
+    });
+  });
+}
+
+async function julgarAcesso(uid, aprovar, nome) {
+  if (!aprovar && !confirm(`Recusar ${nome}? A conta é apagada.`)) return;
+  try {
+    const r = await fetch(WORKER_URL + '/pdv-aprovar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await auth.currentUser.getIdToken(), uid, aprovar }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return toast(d.error || 'Não consegui agora.', 'err');
+    toast(aprovar ? `${nome} pode entrar no PDV` : `${nome} recusado`);
+  } catch {
+    toast('Sem conexão.', 'err');
+  }
+}
 
 function startListeners() {
 document.getElementById('loading').style.display = 'flex';
@@ -2817,7 +2941,7 @@ onAuthStateChanged(auth, (user) => {
     // turno é metade da informação.
     usuarioLogado = user.email || null;
     hideLoginScreen();
-    if (!listenersNoAr) { listenersNoAr = true; startListeners(); }
+    if (!listenersNoAr) { listenersNoAr = true; startListeners(); ligarAcessosSeAdmin(user).catch(console.warn); }
   } else if (!listenersNoAr) {
     showLoginScreen();
   }
