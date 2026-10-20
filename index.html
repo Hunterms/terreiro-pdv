@@ -426,6 +426,7 @@ input[type="date"]{color-scheme:dark}
     </div>
     <div class="login-err" id="login-err">Email ou senha incorretos</div>
     <button class="btn-login" onclick="doLogin()">Entrar</button>
+    <button type="button" onclick="esqueciSenha()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:var(--font);text-decoration:underline">Esqueci minha senha</button>
     <button type="button" onclick="togglePedido(true)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:var(--font);text-decoration:underline">Não tem acesso? Pedir cadastro</button>
   </div>
   <!-- Pedido de acesso: a conta nasce desabilitada no Worker e um admin aprova
@@ -939,7 +940,7 @@ function onSnapshot(ref, aoReceber, aoFalhar) {
   return _onSnapshotOriginal(ref, aoReceber, aoFalhar || ((e) => _falhaDeLeitura(ref, e)));
 }
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail
 } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/auth/+esm";
 
 const firebaseConfig = {
@@ -1003,6 +1004,24 @@ window.doLogin = function() {
       document.getElementById('login-pass').value = '';
       document.getElementById('login-pass').focus();
       if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+    });
+};
+
+// Esqueci a senha: o próprio Firebase manda o email com o link e hospeda a página de
+// trocar a senha. A resposta é a mesma com ou sem conta, pra não revelar quem tem acesso.
+window.esqueciSenha = function() {
+  const email = document.getElementById('login-user').value.trim();
+  const err = document.getElementById('login-err');
+  const mostra = (t) => { err.textContent = t; err.style.display = 'block'; };
+  if (!email) { mostra('Escreve teu email no campo acima e toca em "Esqueci minha senha" de novo.'); document.getElementById('login-user').focus(); return; }
+  auth.languageCode = 'pt';
+  sendPasswordResetEmail(auth, email)
+    .then(() => mostra('Se esse email tiver acesso, chega um link pra criar senha nova. Olha o spam também.'))
+    .catch(e => {
+      console.warn('reset falhou:', e?.code || e);
+      mostra(e?.code === 'auth/invalid-email' ? 'Esse email não parece certo. Confere e tenta de novo.'
+        : e?.code === 'auth/too-many-requests' ? 'Muitos pedidos seguidos. Espera uns minutos e tenta de novo.'
+        : 'Se esse email tiver acesso, chega um link pra criar senha nova. Olha o spam também.');
     });
 };
 
